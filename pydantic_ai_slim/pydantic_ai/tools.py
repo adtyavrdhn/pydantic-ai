@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, Literal, Union
 
-from opentelemetry.trace import Tracer
+from opentelemetry.trace import Tracer, get_current_span
 from pydantic import ValidationError
 from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue
 from pydantic_core import SchemaValidator, core_schema
@@ -132,6 +132,7 @@ DocstringFormat = Literal['google', 'numpy', 'sphinx', 'auto']
 * `'sphinx'` — [Sphinx-style](https://sphinx-rtd-tutorial.readthedocs.io/en/latest/docstrings.html#the-sphinx-docstring-format) docstrings.
 * `'auto'` — Automatically infer the format based on the structure of the docstring.
 """
+
 
 A = TypeVar('A')
 
@@ -354,10 +355,10 @@ class Tool(Generic[AgentDepsT]):
             ),
         }
         with tracer.start_as_current_span('running tool', attributes=span_attributes):
-            return await self._run(message, run_context)
+            return await self._run(message, run_context, include_content)
 
     async def _run(
-        self, message: _messages.ToolCallPart, run_context: RunContext[AgentDepsT]
+        self, message: _messages.ToolCallPart, run_context: RunContext[AgentDepsT], include_content: bool
     ) -> _messages.ToolReturnPart | _messages.RetryPromptPart:
         try:
             validator = self.function_schema.validator
@@ -376,6 +377,11 @@ class Tool(Generic[AgentDepsT]):
         )
         try:
             response_content = await self.function_schema.call(args_dict, ctx)
+            current_span = get_current_span()
+
+            if include_content and current_span.is_recording():
+                current_span.set_attribute('tool_response', response_content)
+
         except ModelRetry as e:
             return self._on_error(e, message)
 
