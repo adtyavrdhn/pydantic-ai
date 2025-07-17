@@ -754,6 +754,14 @@ class ModelResponse:
                     body = new_event_body()
                 if settings.include_content:
                     body['content'] = part.content
+            elif isinstance(part, ThinkingPart):
+                body.setdefault('thinking', {})
+                if settings.include_content:
+                    body['thinking']['content'] = part.content
+                if part.signature:
+                    body['thinking']['signature'] = part.signature
+                if part.id:
+                    body['thinking']['id'] = part.id
 
         return result
 

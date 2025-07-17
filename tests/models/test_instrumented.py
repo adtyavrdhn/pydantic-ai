@@ -25,6 +25,7 @@ from pydantic_ai.messages import (
     RetryPromptPart,
     SystemPromptPart,
     TextPart,
+    ThinkingPart,
     TextPartDelta,
     ToolCallPart,
     ToolReturnPart,
@@ -764,7 +765,12 @@ def test_messages_to_otel_events_image_url(document_content: BinaryContent):
             ]
         ),
         ModelRequest(parts=[UserPromptPart(content=['user_prompt6', document_content])]),
-        ModelResponse(parts=[TextPart('text1')]),
+        ModelResponse(
+            parts=[
+                TextPart('text1'),
+                ThinkingPart(id='thinking_id', signature='thinking_signature', content='thinking_content'),
+            ]
+        ),
     ]
     settings = InstrumentationSettings()
     assert [InstrumentedModel.event_to_dict(e) for e in settings.messages_to_otel_events(messages)] == snapshot(
@@ -817,6 +823,7 @@ def test_messages_to_otel_events_image_url(document_content: BinaryContent):
             {
                 'role': 'assistant',
                 'content': 'text1',
+                'thinking': {'content': 'thinking_content', 'signature': 'thinking_signature', 'id': 'thinking_id'},
                 'gen_ai.message.index': 6,
                 'event.name': 'gen_ai.assistant.message',
             },
@@ -859,7 +866,13 @@ def test_messages_without_content(document_content: BinaryContent):
                 )
             ]
         ),
-        ModelResponse(parts=[TextPart('text2'), ToolCallPart(tool_name='my_tool', args={'a': 13, 'b': 4})]),
+        ModelResponse(
+            parts=[
+                TextPart('text2'),
+                ToolCallPart(tool_name='my_tool', args={'a': 13, 'b': 4}),
+                ThinkingPart(id='thinking_part_1', signature='thinking_part_1', content='thinking_part_1_content'),
+            ]
+        ),
         ModelRequest(parts=[ToolReturnPart('tool', 'tool_return_content', 'tool_call_1')]),
         ModelRequest(parts=[RetryPromptPart('retry_prompt', tool_name='tool', tool_call_id='tool_call_2')]),
         ModelRequest(parts=[UserPromptPart(content=['user_prompt2', document_content])]),
@@ -900,6 +913,7 @@ def test_messages_without_content(document_content: BinaryContent):
                         'function': {'name': 'my_tool'},
                     }
                 ],
+                'thinking': {'signature': 'thinking_part_1', 'id': 'thinking_part_1'},
                 'gen_ai.message.index': 3,
                 'event.name': 'gen_ai.assistant.message',
             },
