@@ -756,7 +756,7 @@ class ModelResponse:
                     body['content'] = part.content
             elif isinstance(part, ThinkingPart):
                 body.setdefault('thinking', {})
-                if settings.include_content:
+                if settings.include_content and part.has_content():
                     body['thinking']['content'] = part.content
                 if part.signature:
                     body['thinking']['signature'] = part.signature
