@@ -42,7 +42,7 @@ from pydantic_ai.models.instrumented import InstrumentationSettings, Instrumente
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RequestUsage
 
-from ..conftest import IsStr, try_import
+from ..conftest import IsDatetime, IsStr, try_import
 
 with try_import() as imports_successful:
     from logfire.testing import CaptureLogfire
@@ -1379,9 +1379,6 @@ def test_message_with_builtin_tool_calls():
         ),
     ]
     settings = InstrumentationSettings()
-    # Built-in tool calls are only included in v2-style messages, not v1-style events,
-    # as the spec does not yet allow tool results coming from the assistant,
-    # and Logfire has special handling for the `type='tool_call_response', 'builtin=True'` messages, but not events.
     assert settings.messages_to_otel_messages(messages) == snapshot(
         [
             {
@@ -1425,5 +1422,157 @@ def test_message_with_builtin_tool_calls():
                     {'type': 'text', 'content': 'text3'},
                 ],
             }
+        ]
+    )
+
+
+def test_otel_messages_to_messages():
+    """Test the otel_messages_to_messages method with comprehensive message types."""
+    from pydantic_ai import _otel_messages
+
+    otel_messages: list[_otel_messages.ChatMessage] = [
+        {'role': 'system', 'parts': [{'type': 'text', 'content': 'You are a helpful assistant.'}]},
+        {'role': 'user', 'parts': [{'type': 'text', 'content': 'Hello, how are you?'}]},
+        {
+            'role': 'assistant',
+            'parts': [
+                {'type': 'text', 'content': 'I need to think about this.'},
+                {'type': 'thinking', 'content': 'The user is greeting me, I should respond politely.'},
+                {'type': 'text', 'content': 'Let me search for some information.'},
+                {'type': 'tool_call', 'id': 'tool_call_1', 'name': 'search_tool', 'arguments': {'query': 'weather'}},
+                {
+                    'type': 'tool_call',
+                    'id': 'tool_call_2',
+                    'name': 'builtin_tool',
+                    'arguments': {'param': 'value'},
+                    'builtin': True,
+                },
+            ],
+        },
+        {
+            'role': 'user',
+            'parts': [
+                {'type': 'text', 'content': 'Here are the results:'},
+                {
+                    'type': 'tool_call_response',
+                    'id': 'tool_call_1',
+                    'name': 'search_tool',
+                    'result': 'Weather is sunny',
+                },
+                {
+                    'type': 'tool_call_response',
+                    'id': 'tool_call_3',
+                    'name': 'failing_tool',
+                    'result': 'Error occurred. Fix the errors and try again.',
+                },
+            ],
+        },
+        {
+            'role': 'assistant',
+            'parts': [
+                {'type': 'text', 'content': ''},
+                {'type': 'thinking', 'content': ''},
+                {'type': 'text', 'content': 'Final response'},
+                {
+                    'type': 'tool_call',
+                    'id': 'tool_call_1',
+                    'name': 'code_execution',
+                    'builtin': True,
+                    'arguments': {'code': '2 * 2'},
+                },
+            ],
+        },
+        {
+            'role': 'user',
+            'parts': [
+                {'type': 'text', 'content': ''},
+                {'type': 'text', 'content': 'Non-empty text'},
+            ],
+        },
+        {
+            'role': 'user',
+            'parts': [
+                {
+                    'type': 'text',
+                    'content': 'Validation feedback:\nSome error message\n\nFix the errors and try again.',
+                },
+            ],
+        },
+    ]
+
+    settings = InstrumentationSettings()
+    result = settings.otel_messages_to_messages(otel_messages)
+
+    assert result == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(
+                        content='You are a helpful assistant.',
+                        timestamp=IsDatetime(),
+                    ),
+                    UserPromptPart(
+                        content='Hello, how are you?',
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(content='I need to think about this.'),
+                    ThinkingPart(content='The user is greeting me, I should respond politely.'),
+                    TextPart(content='Let me search for some information.'),
+                    ToolCallPart(tool_call_id='tool_call_1', tool_name='search_tool', args={'query': 'weather'}),
+                    BuiltinToolCallPart(tool_call_id='tool_call_2', tool_name='builtin_tool', args={'param': 'value'}),
+                ],
+                timestamp=IsDatetime(),
+            ),
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Here are the results:',
+                        timestamp=IsDatetime(),
+                    ),
+                    ToolReturnPart(
+                        tool_name='search_tool',
+                        content='Weather is sunny',
+                        tool_call_id='tool_call_1',
+                        timestamp=IsDatetime(),
+                    ),
+                    RetryPromptPart(
+                        content='Error occurred. Fix the errors and try again.',
+                        tool_call_id=IsStr(),
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(content='Final response'),
+                    BuiltinToolCallPart(tool_name='code_execution', args={'code': '2 * 2'}, tool_call_id='tool_call_1'),
+                ],
+                timestamp=IsDatetime(),
+            ),
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Non-empty text',
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content="""\
+Validation feedback:
+Some error message
+
+Fix the errors and try again.\
+""",
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
         ]
     )

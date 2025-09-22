@@ -23,10 +23,18 @@ from pydantic import TypeAdapter
 from .. import _otel_messages
 from .._run_context import RunContext
 from ..messages import (
+    BuiltinToolCallPart,
+    BuiltinToolReturnPart,
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     SystemPromptPart,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
 )
 from ..settings import ModelSettings
 from . import KnownModelName, Model, ModelRequestParameters, StreamedResponse
@@ -225,6 +233,94 @@ class InstrumentationSettings:
                 if message.finish_reason is not None:
                     otel_message['finish_reason'] = message.finish_reason
                 result.append(otel_message)
+        return result
+
+    def otel_messages_to_messages(self, otel_messages: list[_otel_messages.ChatMessage]) -> list[ModelMessage]:
+        result: list[ModelMessage] = []
+
+        model_message_parts: list[Any] = []
+
+        for otel_message in otel_messages:
+            role = otel_message['role']
+            parts = otel_message['parts']
+
+            if role == 'assistant':
+                for part in parts:
+                    if part['type'] == 'text':
+                        content = part.get('content', '')
+                        if content:
+                            model_message_parts.append(TextPart(content=content))
+                    elif part['type'] == 'thinking':
+                        content = part.get('content', '')
+                        if content:
+                            model_message_parts.append(ThinkingPart(content=content))
+
+                    elif part['type'] == 'tool_call':
+                        built_in = part.get('builtin', False)
+                        arguments = part.get('arguments', None)
+                        tool_call_id = part['id']
+                        tool_name = part['name']
+
+                        if not isinstance(arguments, str | dict):
+                            arguments = None
+
+                        if built_in:
+                            model_message_parts.append(
+                                BuiltinToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name, args=arguments)
+                            )
+                        else:
+                            model_message_parts.append(
+                                ToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name, args=arguments)
+                            )
+
+                    elif part['type'] == 'tool_call_response':
+                        tool_call_id = part['id']
+                        tool_name = part['name']
+                        built_in = part.get('builtin', False)
+                        content = str(part.get('result', None))
+
+                        model_message_parts.append(
+                            BuiltinToolReturnPart(tool_call_id=tool_call_id, tool_name=tool_name, content=content)
+                        )
+
+            elif role == 'system':
+                for part in parts:
+                    if part['type'] == 'text':
+                        content = part.get('content', '')
+                        if content:
+                            model_message_parts.append(SystemPromptPart(content=content))
+
+                continue
+
+            elif role == 'user':
+                for part in parts:
+                    if part['type'] == 'text':
+                        content = part.get('content', '')
+                        if content:
+                            model_message_parts.append(UserPromptPart(content=str(content)))
+
+                    elif part['type'] == 'tool_call_response':
+                        tool_call_id = part['id']
+                        tool_name = part['name']
+                        built_in = part.get('builtin', False)
+                        content = str(part.get('result', None))
+
+                        if content:
+                            if content.endswith('Fix the errors and try again.'):
+                                model_message_parts.append(RetryPromptPart(content=content))
+                            else:
+                                model_message_parts.append(
+                                    ToolReturnPart(tool_call_id=tool_call_id, tool_name=tool_name, content=content)
+                                )
+
+            if model_message_parts:
+                if role == 'assistant':
+                    result.append(ModelResponse(parts=model_message_parts))
+                    model_message_parts = []
+                else:
+                    result.append(ModelRequest(parts=model_message_parts))
+                    model_message_parts = []
+
         return result
 
     def handle_messages(self, input_messages: list[ModelMessage], response: ModelResponse, system: str, span: Span):
