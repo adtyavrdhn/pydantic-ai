@@ -1427,10 +1427,10 @@ def test_message_with_builtin_tool_calls():
 
 
 def test_otel_messages_to_messages():
-    """Test the otel_messages_to_messages method with comprehensive message types."""
+    """Test the otel_messages_to_messages method with comprehensive message types and edge cases."""
     from pydantic_ai import _otel_messages
 
-    otel_messages: list[_otel_messages.ChatMessage] = [
+    otel_messages: list[_otel_messages.ChatMessage] = [  # type: ignore[assignment]
         {'role': 'system', 'parts': [{'type': 'text', 'content': 'You are a helpful assistant.'}]},
         {'role': 'user', 'parts': [{'type': 'text', 'content': 'Hello, how are you?'}]},
         {
@@ -1495,6 +1495,77 @@ def test_otel_messages_to_messages():
                 {
                     'type': 'text',
                     'content': 'Validation feedback:\nSome error message\n\nFix the errors and try again.',
+                },
+            ],
+        },
+        # Edge cases:
+        # Empty parts list - should be skipped
+        {'role': 'user', 'parts': []},
+        # System role with empty text - should be filtered out
+        {'role': 'system', 'parts': [{'type': 'text', 'content': ''}]},
+        # Assistant role with tool_call_response (unusual but handled)
+        {
+            'role': 'assistant',
+            'parts': [
+                {
+                    'type': 'tool_call_response',
+                    'id': 'tool_edge_1',
+                    'name': 'builtin_tool',
+                    'builtin': True,
+                    'result': 'Result from assistant role',
+                },
+            ],
+        },
+        # User role with builtin tool_call_response
+        {
+            'role': 'user',
+            'parts': [
+                {
+                    'type': 'tool_call_response',
+                    'id': 'tool_edge_2',
+                    'name': 'builtin_user_tool',
+                    'builtin': True,
+                    'result': 'Builtin tool result',
+                },
+            ],
+        },
+        # Tool call with invalid arguments type (not str or dict)
+        {
+            'role': 'assistant',
+            'parts': [
+                {
+                    'type': 'tool_call',
+                    'id': 'tool_edge_3',
+                    'name': 'test_tool',
+                    'arguments': 123,  # Invalid type
+                },
+                {
+                    'type': 'tool_call',
+                    'id': 'tool_edge_4',
+                    'name': 'test_tool2',
+                    'arguments': ['list', 'args'],  # Invalid type
+                },
+            ],
+        },
+        # Unknown role - should be skipped
+        {'role': 'unknown_role', 'parts': [{'type': 'text', 'content': 'This should be skipped'}]},
+        # Unknown part types - should be skipped
+        {
+            'role': 'user',
+            'parts': [
+                {'type': 'unknown_part_type', 'content': 'Skip this'},
+                {'type': 'text', 'content': 'But include this'},
+            ],
+        },
+        # Tool call response with None result
+        {
+            'role': 'user',
+            'parts': [
+                {
+                    'type': 'tool_call_response',
+                    'id': 'tool_edge_5',
+                    'name': 'none_result_tool',
+                    'result': None,
                 },
             ],
         },
@@ -1570,6 +1641,61 @@ Some error message
 
 Fix the errors and try again.\
 """,
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Edge cases:
+            # Empty parts list creates nothing
+            # System with empty text creates nothing
+            # Assistant with tool_call_response
+            ModelResponse(
+                parts=[
+                    BuiltinToolReturnPart(
+                        tool_call_id='tool_edge_1',
+                        tool_name='builtin_tool',
+                        content='Result from assistant role',
+                        timestamp=IsDatetime(),
+                    ),
+                ],
+                timestamp=IsDatetime(),
+            ),
+            # User with builtin tool_call_response (builtin flag doesn't affect user role)
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_call_id='tool_edge_2',
+                        tool_name='builtin_user_tool',
+                        content='Builtin tool result',
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Tool calls with invalid arguments (set to None)
+            ModelResponse(
+                parts=[
+                    ToolCallPart(tool_call_id='tool_edge_3', tool_name='test_tool', args=None),
+                    ToolCallPart(tool_call_id='tool_edge_4', tool_name='test_tool2', args=None),
+                ],
+                timestamp=IsDatetime(),
+            ),
+            # Unknown role skipped
+            # Unknown part type skipped, but known part included
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='But include this',
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Tool response with None result (stringified)
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_call_id='tool_edge_5',
+                        tool_name='none_result_tool',
+                        content='None',
                         timestamp=IsDatetime(),
                     ),
                 ]
