@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import itertools
 import json
 import warnings
@@ -23,8 +24,13 @@ from pydantic import TypeAdapter
 from .. import _otel_messages
 from .._run_context import RunContext
 from ..messages import (
+    AudioUrl,
+    BinaryContent,
     BuiltinToolCallPart,
     BuiltinToolReturnPart,
+    DocumentUrl,
+    FinishReason,
+    ImageUrl,
     ModelMessage,
     ModelRequest,
     ModelResponse,
@@ -34,7 +40,9 @@ from ..messages import (
     ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
+    UserContent,
     UserPromptPart,
+    VideoUrl,
 )
 from ..settings import ModelSettings
 from . import KnownModelName, Model, ModelRequestParameters, StreamedResponse
@@ -245,43 +253,7 @@ class InstrumentationSettings:
             parts = otel_message['parts']
 
             if role == 'assistant':
-                for part in parts:
-                    if part['type'] == 'text':
-                        content = part.get('content', '')
-                        if content:
-                            model_message_parts.append(TextPart(content=content))
-                    elif part['type'] == 'thinking':
-                        content = part.get('content', '')
-                        if content:
-                            model_message_parts.append(ThinkingPart(content=content))
-
-                    elif part['type'] == 'tool_call':
-                        built_in = part.get('builtin', False)
-                        arguments = part.get('arguments', None)
-                        tool_call_id = part['id']
-                        tool_name = part['name']
-
-                        if not isinstance(arguments, str | dict):
-                            arguments = None
-
-                        if built_in:
-                            model_message_parts.append(
-                                BuiltinToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name, args=arguments)
-                            )
-                        else:
-                            model_message_parts.append(
-                                ToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name, args=arguments)
-                            )
-
-                    elif part['type'] == 'tool_call_response':
-                        tool_call_id = part['id']
-                        tool_name = part['name']
-                        built_in = part.get('builtin', False)
-                        content = str(part.get('result', None))
-
-                        model_message_parts.append(
-                            BuiltinToolReturnPart(tool_call_id=tool_call_id, tool_name=tool_name, content=content)
-                        )
+                self._otel_output_message_to_model_message(otel_message, model_message_parts)
 
             elif role == 'system':
                 for part in parts:
@@ -293,29 +265,80 @@ class InstrumentationSettings:
                 continue
 
             elif role == 'user':
+                user_content_parts: list[UserContent] = []
+
                 for part in parts:
                     if part['type'] == 'text':
                         content = part.get('content', '')
                         if content:
-                            model_message_parts.append(UserPromptPart(content=str(content)))
+                            user_content_parts.append(str(content))
+
+                    elif part['type'] == 'image-url':
+                        url = part.get('url', '')
+                        if url:
+                            user_content_parts.append(ImageUrl(url=url))
+
+                    elif part['type'] == 'audio-url':
+                        url = part.get('url', '')
+                        if url:
+                            user_content_parts.append(AudioUrl(url=url))
+
+                    elif part['type'] == 'video-url':
+                        url = part.get('url', '')
+                        if url:
+                            user_content_parts.append(VideoUrl(url=url))
+
+                    elif part['type'] == 'document-url':
+                        url = part.get('url', '')
+                        if url:
+                            user_content_parts.append(DocumentUrl(url=url))
+
+                    elif part['type'] == 'binary':
+                        media_type = part['media_type']
+                        content_b64 = part.get('content', '')
+                        if content_b64:
+                            data = base64.b64decode(content_b64)
+                            user_content_parts.append(BinaryContent(data=data, media_type=media_type))
 
                     elif part['type'] == 'tool_call_response':
+                        # If we have accumulated user content, add it as a UserPromptPart first
+                        if user_content_parts:
+                            if len(user_content_parts) == 1 and isinstance(user_content_parts[0], str):
+                                model_message_parts.append(UserPromptPart(content=user_content_parts[0]))
+                            else:
+                                model_message_parts.append(UserPromptPart(content=user_content_parts))
+                            user_content_parts = []
+
                         tool_call_id = part['id']
                         tool_name = part['name']
-                        built_in = part.get('builtin', False)
                         content = str(part.get('result', None))
 
                         if content:
                             if content.endswith('Fix the errors and try again.'):
-                                model_message_parts.append(RetryPromptPart(content=content))
+                                model_message_parts.append(
+                                    RetryPromptPart(
+                                        content=content,
+                                        tool_name=tool_name,
+                                        tool_call_id=tool_call_id,
+                                    )
+                                )
                             else:
                                 model_message_parts.append(
                                     ToolReturnPart(tool_call_id=tool_call_id, tool_name=tool_name, content=content)
                                 )
 
+                # Add any remaining user content parts
+                if user_content_parts:
+                    if len(user_content_parts) == 1 and isinstance(user_content_parts[0], str):
+                        model_message_parts.append(UserPromptPart(content=user_content_parts[0]))
+                    else:
+                        model_message_parts.append(UserPromptPart(content=user_content_parts))
+
             if model_message_parts:
                 if role == 'assistant':
-                    result.append(ModelResponse(parts=model_message_parts))
+                    finish_reason = otel_message.get('finish_reason')
+                    finish_reason_typed: FinishReason | None = cast(FinishReason | None, finish_reason)
+                    result.append(ModelResponse(parts=model_message_parts, finish_reason=finish_reason_typed))
                     model_message_parts = []
                 else:
                     result.append(ModelRequest(parts=model_message_parts))
@@ -397,6 +420,48 @@ class InstrumentationSettings:
                     ),
                 }
             )
+
+    def _otel_output_message_to_model_message(
+        self, otel_message: _otel_messages.ChatMessage, model_message_parts: list[Any]
+    ) -> None:
+        parts = otel_message['parts']
+        for part in parts:
+            if part['type'] == 'text':
+                content = part.get('content', '')
+                if content:
+                    model_message_parts.append(TextPart(content=content))
+            elif part['type'] == 'thinking':
+                content = part.get('content', '')
+                if content:
+                    model_message_parts.append(ThinkingPart(content=content))
+
+            elif part['type'] == 'tool_call':
+                built_in = part.get('builtin', False)
+                arguments = part.get('arguments', None)
+                tool_call_id = part['id']
+                tool_name = part['name']
+
+                if not isinstance(arguments, str | dict):
+                    arguments = None
+
+                if built_in:
+                    model_message_parts.append(
+                        BuiltinToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name, args=arguments)
+                    )
+                else:
+                    model_message_parts.append(
+                        ToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name, args=arguments)
+                    )
+
+            elif part['type'] == 'tool_call_response':
+                tool_call_id = part['id']
+                tool_name = part['name']
+                built_in = part.get('builtin', False)
+                content = str(part.get('result', None))
+
+                model_message_parts.append(
+                    BuiltinToolReturnPart(tool_call_id=tool_call_id, tool_name=tool_name, content=content)
+                )
 
 
 GEN_AI_SYSTEM_ATTRIBUTE = 'gen_ai.system'

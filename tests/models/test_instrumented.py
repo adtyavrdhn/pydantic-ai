@@ -1481,6 +1481,7 @@ def test_otel_messages_to_messages():
                     'arguments': {'code': '2 * 2'},
                 },
             ],
+            'finish_reason': 'stop',
         },
         {
             'role': 'user',
@@ -1569,6 +1570,71 @@ def test_otel_messages_to_messages():
                 },
             ],
         },
+        # Multi-modal content: image URL
+        {
+            'role': 'user',
+            'parts': [
+                {'type': 'text', 'content': 'Look at this:'},
+                {'type': 'image-url', 'url': 'https://example.com/image.png'},
+            ],
+        },
+        # Multi-modal content: audio, video, document URLs
+        {
+            'role': 'user',
+            'parts': [
+                {'type': 'audio-url', 'url': 'https://example.com/audio.mp3'},
+                {'type': 'video-url', 'url': 'https://example.com/video.mp4'},
+                {'type': 'document-url', 'url': 'https://example.com/doc.pdf'},
+            ],
+        },
+        # Multi-modal content: binary data (base64)
+        {
+            'role': 'user',
+            'parts': [
+                {
+                    'type': 'binary',
+                    'media_type': 'image/png',
+                    'content': 'iVBORw0KGgo=',  # Truncated PNG header in base64
+                },
+            ],
+        },
+        # Multi-modal with empty URL (should be skipped)
+        {
+            'role': 'user',
+            'parts': [
+                {'type': 'image-url', 'url': ''},
+                {'type': 'text', 'content': 'Empty URL skipped'},
+            ],
+        },
+        # Multi-modal: binary without content (should be skipped)
+        {
+            'role': 'user',
+            'parts': [
+                {'type': 'binary', 'media_type': 'image/png'},
+                {'type': 'text', 'content': 'Binary without content skipped'},
+            ],
+        },
+        # Assistant with finish_reason='tool_call'
+        {
+            'role': 'assistant',
+            'parts': [
+                {'type': 'text', 'content': 'Let me call a tool.'},
+                {'type': 'tool_call', 'id': 'call_123', 'name': 'test_tool', 'arguments': {'arg': 'value'}},
+            ],
+            'finish_reason': 'tool_call',
+        },
+        # RetryPromptPart with tool_name and tool_call_id preserved
+        {
+            'role': 'user',
+            'parts': [
+                {
+                    'type': 'tool_call_response',
+                    'id': 'retry_call_456',
+                    'name': 'validation_tool',
+                    'result': '2 validation errors: [{"type": "missing"}]\n\nFix the errors and try again.',
+                },
+            ],
+        },
     ]
 
     settings = InstrumentationSettings()
@@ -1612,7 +1678,8 @@ def test_otel_messages_to_messages():
                     ),
                     RetryPromptPart(
                         content='Error occurred. Fix the errors and try again.',
-                        tool_call_id=IsStr(),
+                        tool_name='failing_tool',
+                        tool_call_id='tool_call_3',
                         timestamp=IsDatetime(),
                     ),
                 ]
@@ -1623,6 +1690,7 @@ def test_otel_messages_to_messages():
                     BuiltinToolCallPart(tool_name='code_execution', args={'code': '2 * 2'}, tool_call_id='tool_call_1'),
                 ],
                 timestamp=IsDatetime(),
+                finish_reason='stop',
             ),
             ModelRequest(
                 parts=[
@@ -1696,6 +1764,80 @@ Fix the errors and try again.\
                         tool_call_id='tool_edge_5',
                         tool_name='none_result_tool',
                         content='None',
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Multi-modal: image URL with text
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content=[
+                            'Look at this:',
+                            ImageUrl(url='https://example.com/image.png', identifier=IsStr()),
+                        ],
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Multi-modal: audio, video, document URLs (no text)
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content=[
+                            AudioUrl(url='https://example.com/audio.mp3', identifier=IsStr()),
+                            VideoUrl(url='https://example.com/video.mp4', identifier=IsStr()),
+                            DocumentUrl(url='https://example.com/doc.pdf', identifier=IsStr()),
+                        ],
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Multi-modal: binary data
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content=[
+                            BinaryContent(data=b'\x89PNG\r\n\x1a\n', media_type='image/png', identifier=IsStr()),
+                        ],
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Multi-modal: empty URL skipped
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Empty URL skipped',
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Multi-modal: binary without content skipped
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Binary without content skipped',
+                        timestamp=IsDatetime(),
+                    ),
+                ]
+            ),
+            # Assistant with finish_reason='tool_call'
+            ModelResponse(
+                parts=[
+                    TextPart(content='Let me call a tool.'),
+                    ToolCallPart(tool_call_id='call_123', tool_name='test_tool', args={'arg': 'value'}),
+                ],
+                timestamp=IsDatetime(),
+                finish_reason='tool_call',
+            ),
+            # RetryPromptPart with tool_name and tool_call_id preserved
+            ModelRequest(
+                parts=[
+                    RetryPromptPart(
+                        content='2 validation errors: [{"type": "missing"}]\n\nFix the errors and try again.',
+                        tool_name='validation_tool',
+                        tool_call_id='retry_call_456',
                         timestamp=IsDatetime(),
                     ),
                 ]
