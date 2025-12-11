@@ -49,6 +49,7 @@ nav:
           - input.md
           - thinking.md
           - retries.md
+          - caching.md
       - MCP:
           - Overview: mcp/overview.md
           - mcp/client.md
