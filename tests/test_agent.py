@@ -807,6 +807,22 @@ def test_output_type_with_two_descriptions():
         ]
     )
 
+def test_output_type_with_prepare():
+    class MyOutput(BaseModel):
+        """Description from docstring"""
+    
+        valid: bool
+
+    m = TestModel()
+    async def my_tool_def(ctx: RunContext[Any], tool_def: ToolDefinition) -> ToolDefinition:
+        print(ctx)
+        return tool_def
+
+    agent = Agent(m, output_type=ToolOutput(MyOutput, prepare=my_tool_def))
+    result = agent.run_sync('Hello')
+
+    assert result.output == snapshot(MyOutput(valid=False))
+
 
 def test_output_type_tool_output_union():
     class Foo(BaseModel):

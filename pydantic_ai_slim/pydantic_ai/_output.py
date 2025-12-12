@@ -899,12 +899,13 @@ class OutputToolset(AbstractToolset[AgentDepsT]):
             name = None
             description = None
             strict = None
+            prepare = None
             if isinstance(output, ToolOutput):
                 # do we need to error on conflicts here? (DavidM): If this is internal maybe doesn't matter, if public, use overloads
                 name = output.name
                 description = output.description
                 strict = output.strict
-
+                prepare = output.prepare
                 output = output.output
 
             description = description or default_description
@@ -941,6 +942,7 @@ class OutputToolset(AbstractToolset[AgentDepsT]):
                 outer_typed_dict_key=processor.outer_typed_dict_key,
                 kind='output',
             )
+                
             processors[name] = processor
             tool_defs.append(tool_def)
 
@@ -970,7 +972,7 @@ class OutputToolset(AbstractToolset[AgentDepsT]):
         return {
             tool_def.name: ToolsetTool(
                 toolset=self,
-                tool_def=tool_def,
+                tool_def=await tool_def.prepare(ctx, tool_def),
                 max_retries=self.max_retries,
                 args_validator=self.processors[tool_def.name].validator,
             )

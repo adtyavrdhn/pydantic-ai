@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, Literal
+from typing import Any, Generic, Literal, TypeAlias
 
 from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
 from pydantic.json_schema import JsonSchemaValue
+from pydantic_ai._run_context import AgentDepsT
 from pydantic_core import core_schema
 from typing_extensions import TypeAliasType, TypeVar, deprecated
 
@@ -71,8 +72,17 @@ See [text output docs](../output.md#text-output) for more information.
 """
 
 
+OutputToolPrepareFunc: TypeAlias = Callable[[RunContext[AgentDepsT], 'ToolDefinition'], Awaitable['ToolDefinition | None']]
+"""Definition of a function that can prepare a tool definition at call time for output tools.
+See [tool docs](../tools-advanced.md#tool-prepare) for more information.
+"""
+
+OutputToolAgentDepsT = TypeVar('OutputToolAgentDepsT', default=object, contravariant=True)
+"""Type variable for agent dependencies for a tool."""
+
+
 @dataclass(init=False)
-class ToolOutput(Generic[OutputDataT]):
+class ToolOutput(Generic[OutputDataT, OutputToolAgentDepsT]): #TODO(v2): Change the order of OutputDataT and AgentDepsT(other classes have AgentDepsT first)
     """Marker class to use a tool for output and optionally customize the tool.
 
     Example:
@@ -115,6 +125,8 @@ class ToolOutput(Generic[OutputDataT]):
     """The maximum number of retries for the tool."""
     strict: bool | None
     """Whether to use strict mode for the tool."""
+    prepare: OutputToolPrepareFunc[OutputToolAgentDepsT] | None
+    """An optional function that can prepare the tool definition at call time."""
 
     def __init__(
         self,
@@ -124,12 +136,14 @@ class ToolOutput(Generic[OutputDataT]):
         description: str | None = None,
         max_retries: int | None = None,
         strict: bool | None = None,
+        prepare: OutputToolPrepareFunc[OutputToolAgentDepsT] | None = None,
     ):
         self.output = type_
         self.name = name
         self.description = description
         self.max_retries = max_retries
         self.strict = strict
+        self.prepare = prepare
 
 
 @dataclass(init=False)
