@@ -55,8 +55,6 @@ else:
 
 pytestmark = pytest.mark.anyio
 
-docker_skip = pytest.mark.skipif(not docker_installed, reason='docker package not installed')
-
 
 def build_run_context(deps: Any = None, run_step: int = 0) -> RunContext[Any]:
     return RunContext(
@@ -1304,40 +1302,6 @@ new.py\
         assert result == snapshot('main.py:1:print("hello")')
 
 
-# --- Docker instantiation tests ---
-
-
-@docker_skip
-def test_docker_sandbox_instantiation():
-    """DockerEnvironment can be constructed without starting Docker."""
-
-    # Verify construction succeeds with default and custom settings
-    sandbox = DockerEnvironment(image='python:3.12-slim')
-    assert isinstance(sandbox, DockerEnvironment)
-
-    sandbox_with_opts = DockerEnvironment(
-        image='node:20-slim',
-        memory_limit='512m',
-        cpu_limit=1.0,
-        network_disabled=True,
-    )
-    assert isinstance(sandbox_with_opts, DockerEnvironment)
-
-    # Verify security hardening parameters are accepted
-    sandbox_hardened = DockerEnvironment(
-        image='python:3.12-slim',
-        network_disabled=True,
-        read_only=True,
-        cap_drop=['ALL'],
-        security_opt=['no-new-privileges'],
-        user='nobody',
-        pids_limit=256,
-        tmpfs={'/tmp': 'noexec,nosuid,size=64m'},
-        init=True,
-    )
-    assert isinstance(sandbox_hardened, DockerEnvironment)
-
-
 # --- Agent-level integration test ---
 
 
@@ -1362,14 +1326,6 @@ async def test_agent_with_execution_toolset():
 
 
 # --- _base.py helper functions ---
-
-
-@docker_skip
-def test_shell_escape():
-    assert _shell_escape('hello') == "'hello'"
-    assert _shell_escape("it's") == "'it'\\''s'"
-    assert _shell_escape('') == "''"
-    assert _shell_escape('a b c') == "'a b c'"
 
 
 def test_format_lines_empty_file():
@@ -1415,133 +1371,6 @@ def test_glob_match_question_mark():
     assert glob_match('test.py', 'te??.py') is True
     assert glob_match('test.py', 't???.py') is True  # t + 3 chars (est) + .py
     assert glob_match('test.py', 't????.py') is False  # needs 4 chars between t and .py
-
-
-@docker_skip
-def test_build_read_file_cmd_default():
-    cmd = _build_read_file_cmd('test.txt')
-    assert 'awk' in cmd
-    assert "'test.txt'" in cmd
-    assert 'NR>=1' in cmd
-    assert 'NR<=2000' in cmd
-
-
-@docker_skip
-def test_build_read_file_cmd_with_offset():
-    cmd = _build_read_file_cmd('file.py', offset=10, limit=50)
-    assert 'NR>=11' in cmd
-    assert 'NR<=60' in cmd
-    assert "'file.py'" in cmd
-
-
-@docker_skip
-def test_build_read_file_cmd_continuation_hint():
-    """_build_read_file_cmd includes a continuation hint in the awk END block."""
-    cmd = _build_read_file_cmd('file.py', offset=0, limit=10)
-    assert 'more lines' in cmd
-    assert 'offset=10' in cmd
-
-
-@docker_skip
-def test_build_grep_cmd_content():
-    cmd = _build_grep_cmd('pattern')
-    assert 'grep -rIE' in cmd
-    assert '-n' in cmd
-    assert "'pattern'" in cmd
-    assert "'.'" in cmd
-
-
-@docker_skip
-def test_build_grep_cmd_files_with_matches():
-    cmd = _build_grep_cmd('pat', output_mode='files_with_matches')
-    assert '-l' in cmd
-    assert '-n' not in cmd
-
-
-@docker_skip
-def test_build_grep_cmd_count():
-    cmd = _build_grep_cmd('pat', output_mode='count')
-    assert '-c' in cmd
-
-
-@docker_skip
-def test_build_grep_cmd_with_path():
-    cmd = _build_grep_cmd('pat', path='src')
-    assert "'src'" in cmd
-
-
-@docker_skip
-def test_build_grep_cmd_with_glob_pattern():
-    """glob_pattern is shell-escaped to prevent injection."""
-    cmd = _build_grep_cmd('pat', glob_pattern='*.py')
-    assert '--include' in cmd
-    assert "'*.py'" in cmd
-
-
-@docker_skip
-def test_build_grep_cmd_glob_pattern_escaping():
-    """Verify glob_pattern with special chars is properly shell-escaped."""
-    cmd = _build_grep_cmd('pat', glob_pattern='*.py')
-    # The glob pattern should be shell-escaped (wrapped in single quotes)
-    assert "--include '*.py'" in cmd
-
-    # Even a malicious glob_pattern gets safely escaped
-    cmd2 = _build_grep_cmd('pat', glob_pattern='$(evil)')
-    assert '$(evil)' not in cmd2.replace("'$(evil)'", '')  # Only appears inside quotes
-
-
-@docker_skip
-def test_build_glob_cmd():
-    cmd = _build_glob_cmd('*.py')
-    assert 'find' in cmd
-    assert "'*.py'" in cmd
-    assert "'.'" in cmd
-    assert '-maxdepth 1' in cmd
-
-
-@docker_skip
-def test_build_glob_cmd_with_path():
-    cmd = _build_glob_cmd('*.py', path='src')
-    assert "'src'" in cmd
-    assert '-maxdepth 1' in cmd
-
-
-@docker_skip
-def test_build_glob_cmd_nested_pattern():
-    cmd = _build_glob_cmd('src/*.py')
-    assert '-maxdepth 2' in cmd
-
-
-@docker_skip
-def test_build_glob_cmd_recursive_no_maxdepth():
-    cmd = _build_glob_cmd('**/*.py')
-    assert '-maxdepth' not in cmd
-
-
-@docker_skip
-def test_parse_glob_output_empty():
-    assert _parse_glob_output('') == []
-    assert _parse_glob_output('  ') == []
-    assert _parse_glob_output('\n') == []
-
-
-@docker_skip
-def test_parse_glob_output_multiline():
-    assert _parse_glob_output('a.py\nb.py\nc.py\n') == ['a.py', 'b.py', 'c.py']
-
-
-@docker_skip
-def test_filter_grep_count_output():
-    text = 'a.py:3\nb.py:0\nc.py:1'
-    result = _filter_grep_count_output(text)
-    assert result == 'a.py:3\nc.py:1'
-
-
-@docker_skip
-def test_filter_grep_count_output_all_zero():
-    text = 'a.py:0\nb.py:0'
-    result = _filter_grep_count_output(text)
-    assert result == ''
 
 
 def test_apply_edit_basic():
@@ -1977,256 +1806,893 @@ def mock_docker_sandbox(mock_container: MockContainer) -> Any:
     return sandbox
 
 
-async def test_docker_execute(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.execute runs commands in container."""
-    result = await mock_docker_sandbox.shell('echo hello')
-    assert result.exit_code == 0
-    assert isinstance(result.output, str)
+@pytest.mark.skipif(not docker_installed, reason='docker package not installed')
+class TestDocker:
+    async def test_docker_execute(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.execute runs commands in container."""
+        result = await mock_docker_sandbox.shell('echo hello')
+        assert result.exit_code == 0
+        assert isinstance(result.output, str)
+
+    async def test_docker_execute_timeout(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.execute wraps command with timeout."""
+        result = await mock_docker_sandbox.shell('echo test', timeout=30)
+        assert result.exit_code == 0
+
+    async def test_docker_execute_no_timeout(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.execute with timeout=None."""
+        result = await mock_docker_sandbox.shell('echo test', timeout=None)
+        assert result.exit_code == 0
+
+    async def test_docker_execute_with_env(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.execute passes env vars."""
+        result = await mock_docker_sandbox.shell('echo test', env={'KEY': 'value'})
+        assert result.exit_code == 0
+
+    async def test_docker_write_read_file(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment write and read files."""
+        await mock_docker_sandbox.write_file('test.txt', 'hello world\n')
+        content = await mock_docker_sandbox.read_file('test.txt')
+        assert isinstance(content, str)
+
+    async def test_docker_write_file_binary(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment write binary file."""
+        await mock_docker_sandbox.write_file('data.bin', b'\x00\x01\x02')
+
+    async def test_docker_read_file_not_found(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.read_file on missing file raises FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            await mock_docker_sandbox.read_file('nonexistent.txt')
+
+    async def test_docker_read_file_offset_out_of_range(
+        self, mock_docker_sandbox: Any, mock_container: MockContainer
+    ) -> None:
+        """DockerEnvironment.read_file raises ValueError when offset exceeds file length."""
+        mock_container._files['/workspace/small.txt'] = b'line1\nline2\nline3\n'
+        with pytest.raises(ValueError, match='Offset 10 exceeds file length \\(3 lines\\)'):
+            await mock_docker_sandbox.read_file('small.txt', offset=10)
+
+    async def test_docker_read_file_with_offset(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.read_file respects offset and limit."""
+        mock_container._files['/workspace/lines.txt'] = b'a\nb\nc\nd\ne\n'
+        result = await mock_docker_sandbox.read_file('lines.txt', offset=2, limit=2)
+        assert isinstance(result, str)
+        assert '     3\tc\n' in result
+        assert '     4\td\n' in result
+        assert '... (1 more lines. Use offset=4 to continue reading.)' in result
+
+    async def test_docker_read_file_image(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.read_file returns raw bytes for image files."""
+        png_data = b'\x89PNG\r\n\x1a\n'
+        mock_container._files['/workspace/image.png'] = png_data
+        result = await mock_docker_sandbox.read_file('image.png')
+        assert isinstance(result, bytes)
+        assert result == png_data
+
+    async def test_docker_edit_file(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.edit_file replaces text."""
+        mock_container._files['/workspace/code.py'] = b'old_value = 1'
+        count = await mock_docker_sandbox.replace_str('code.py', 'old_value', 'new_value')
+        assert count == 1
+
+    async def test_docker_ls(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.ls returns file entries."""
+        mock_container._files['test.txt'] = b'hello'
+        entries = await mock_docker_sandbox.ls('.')
+        assert isinstance(entries, list)
+
+    async def test_docker_glob(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.glob returns matching paths."""
+        matches = await mock_docker_sandbox.glob('*.py')
+        assert isinstance(matches, list)
+
+    async def test_docker_grep(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.grep returns matches."""
+        result = await mock_docker_sandbox.grep('pattern')
+        assert isinstance(result, str)
+
+    async def test_docker_grep_with_options(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.grep with output_mode and glob_pattern."""
+        result = await mock_docker_sandbox.grep('pattern', glob_pattern='*.py', output_mode='files_with_matches')
+        assert isinstance(result, str)
+
+    async def test_docker_grep_count(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.grep count mode filters zero-count results."""
+        # Override exec_run to return count-style output
+        original_exec_run = mock_container.exec_run
+
+        def count_exec_run(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+            if isinstance(cmd, list) and 'sh' in cmd[0]:
+                cmd_str = cmd[-1] if len(cmd) > 1 else ''
+                if 'grep' in cmd_str and '-c' in cmd_str:
+                    return 0, b'a.py:3\nb.py:0\nc.py:1'
+            return original_exec_run(cmd, **kwargs)  # pragma: no cover
 
+        mock_container.exec_run = count_exec_run  # type: ignore[assignment]
+        result = await mock_docker_sandbox.grep('pattern', output_mode='count')
+        assert 'b.py:0' not in result
 
-async def test_docker_execute_timeout(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.execute wraps command with timeout."""
-    result = await mock_docker_sandbox.shell('echo test', timeout=30)
-    assert result.exit_code == 0
+    async def test_docker_container_property(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.container raises when not started."""
 
+        sandbox = DockerEnvironment()
+        with pytest.raises(RuntimeError, match='not started'):
+            _ = sandbox.container
 
-async def test_docker_execute_no_timeout(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.execute with timeout=None."""
-    result = await mock_docker_sandbox.shell('echo test', timeout=None)
-    assert result.exit_code == 0
+    async def test_docker_create_process(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.create_process returns a DockerEnvironmentProcess."""
+        proc = await mock_docker_sandbox.create_process('echo test')
+        assert proc is not None
 
+    async def test_docker_is_alive(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.is_alive checks container status."""
+        result = await mock_docker_sandbox.is_alive()
+        assert result is True
 
-async def test_docker_execute_with_env(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.execute passes env vars."""
-    result = await mock_docker_sandbox.shell('echo test', env={'KEY': 'value'})
-    assert result.exit_code == 0
+    async def test_docker_is_alive_not_started(
+        self,
+    ) -> None:
+        """DockerEnvironment.is_alive returns False when not started."""
 
+        sandbox = DockerEnvironment()
+        result = await sandbox.is_alive()
+        assert result is False
 
-async def test_docker_write_read_file(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment write and read files."""
-    await mock_docker_sandbox.write_file('test.txt', 'hello world\n')
-    content = await mock_docker_sandbox.read_file('test.txt')
-    assert isinstance(content, str)
-
-
-async def test_docker_write_file_binary(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment write binary file."""
-    await mock_docker_sandbox.write_file('data.bin', b'\x00\x01\x02')
-
-
-async def test_docker_read_file_not_found(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.read_file on missing file raises FileNotFoundError."""
-    with pytest.raises(FileNotFoundError):
-        await mock_docker_sandbox.read_file('nonexistent.txt')
-
-
-async def test_docker_read_file_offset_out_of_range(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.read_file raises ValueError when offset exceeds file length."""
-    mock_container._files['/workspace/small.txt'] = b'line1\nline2\nline3\n'
-    with pytest.raises(ValueError, match='Offset 10 exceeds file length \\(3 lines\\)'):
-        await mock_docker_sandbox.read_file('small.txt', offset=10)
-
-
-async def test_docker_read_file_with_offset(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.read_file respects offset and limit."""
-    mock_container._files['/workspace/lines.txt'] = b'a\nb\nc\nd\ne\n'
-    result = await mock_docker_sandbox.read_file('lines.txt', offset=2, limit=2)
-    assert isinstance(result, str)
-    assert '     3\tc\n' in result
-    assert '     4\td\n' in result
-    assert '... (1 more lines. Use offset=4 to continue reading.)' in result
-
-
-async def test_docker_read_file_image(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.read_file returns raw bytes for image files."""
-    png_data = b'\x89PNG\r\n\x1a\n'
-    mock_container._files['/workspace/image.png'] = png_data
-    result = await mock_docker_sandbox.read_file('image.png')
-    assert isinstance(result, bytes)
-    assert result == png_data
-
-
-async def test_docker_edit_file(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.edit_file replaces text."""
-    mock_container._files['/workspace/code.py'] = b'old_value = 1'
-    count = await mock_docker_sandbox.replace_str('code.py', 'old_value', 'new_value')
-    assert count == 1
-
-
-async def test_docker_ls(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.ls returns file entries."""
-    mock_container._files['test.txt'] = b'hello'
-    entries = await mock_docker_sandbox.ls('.')
-    assert isinstance(entries, list)
-
-
-async def test_docker_glob(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.glob returns matching paths."""
-    matches = await mock_docker_sandbox.glob('*.py')
-    assert isinstance(matches, list)
-
-
-async def test_docker_grep(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.grep returns matches."""
-    result = await mock_docker_sandbox.grep('pattern')
-    assert isinstance(result, str)
-
-
-async def test_docker_grep_with_options(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.grep with output_mode and glob_pattern."""
-    result = await mock_docker_sandbox.grep('pattern', glob_pattern='*.py', output_mode='files_with_matches')
-    assert isinstance(result, str)
-
-
-async def test_docker_grep_count(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.grep count mode filters zero-count results."""
-    # Override exec_run to return count-style output
-    original_exec_run = mock_container.exec_run
-
-    def count_exec_run(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
-        if isinstance(cmd, list) and 'sh' in cmd[0]:
-            cmd_str = cmd[-1] if len(cmd) > 1 else ''
-            if 'grep' in cmd_str and '-c' in cmd_str:
-                return 0, b'a.py:3\nb.py:0\nc.py:1'
-        return original_exec_run(cmd, **kwargs)  # pragma: no cover
-
-    mock_container.exec_run = count_exec_run  # type: ignore[assignment]
-    result = await mock_docker_sandbox.grep('pattern', output_mode='count')
-    assert 'b.py:0' not in result
-
-
-@docker_skip
-async def test_docker_container_property(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.container raises when not started."""
-
-    sandbox = DockerEnvironment()
-    with pytest.raises(RuntimeError, match='not started'):
-        _ = sandbox.container
-
-
-async def test_docker_create_process(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.create_process returns a DockerEnvironmentProcess."""
-    proc = await mock_docker_sandbox.create_process('echo test')
-    assert proc is not None
-
-
-async def test_docker_is_alive(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.is_alive checks container status."""
-    result = await mock_docker_sandbox.is_alive()
-    assert result is True
-
-
-@docker_skip
-async def test_docker_is_alive_not_started() -> None:
-    """DockerEnvironment.is_alive returns False when not started."""
-
-    sandbox = DockerEnvironment()
-    result = await sandbox.is_alive()
-    assert result is False
-
-
-async def test_docker_resolve_path(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment._resolve_path resolves relative paths."""
-    assert mock_docker_sandbox._resolve_path('test.txt') == '/workspace/test.txt'
-    assert mock_docker_sandbox._resolve_path('/abs/path') == '/abs/path'
-    assert mock_docker_sandbox._resolve_path('sub/dir/file.py') == '/workspace/sub/dir/file.py'
-
-
-@docker_skip
-def test_docker_put_file() -> None:
-    """_put_file creates a tar archive and uploads it."""
-
-    container = MockContainer()
-    _put_file(container, '/workspace/test.txt', b'hello')  # type: ignore[arg-type]
-    assert '/workspace/test.txt' in container._files
-    assert container._files['/workspace/test.txt'] == b'hello'
-
-
-@docker_skip
-def test_docker_sandbox_process_read_frame() -> None:
-    """DockerEnvironmentProcess._read_frame parses multiplexed stream frames."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    # Create a mock socket with a multiplexed frame
-    stdout_data = b'hello from stdout'
-    header = struct.pack('>BxxxI', 1, len(stdout_data))  # stream_type=1 (stdout)
-
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [header, stdout_data]
-    proc._socket = mock_socket
-
-    stream_type, data = proc._read_frame()
-    assert stream_type == 1
-    assert data == stdout_data
-
-
-@docker_skip
-def test_docker_sandbox_process_read_frame_stderr() -> None:
-    """DockerEnvironmentProcess._read_frame handles stderr frames."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    stderr_data = b'error output'
-    header = struct.pack('>BxxxI', 2, len(stderr_data))  # stream_type=2 (stderr)
-
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [header, stderr_data]
-    proc._socket = mock_socket
-
-    stream_type, data = proc._read_frame()
-    assert stream_type == 2
-    assert data == stderr_data
-
-
-@docker_skip
-def test_docker_sandbox_process_read_frame_eof() -> None:
-    """DockerEnvironmentProcess._read_frame returns empty on EOF."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    mock_socket = MagicMock()
-    mock_socket.recv.return_value = b''  # EOF
-    proc._socket = mock_socket
-
-    stream_type, data = proc._read_frame()
-    assert stream_type == 0
-    assert data == b''
-    assert proc._eof is True
-
-
-@docker_skip
-def test_docker_sandbox_process_read_frame_zero_size() -> None:
-    """DockerEnvironmentProcess._read_frame handles zero-size frames."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    header = struct.pack('>BxxxI', 1, 0)  # zero size
-
-    mock_socket = MagicMock()
-    mock_socket.recv.return_value = header
-    proc._socket = mock_socket
-
-    stream_type, data = proc._read_frame()
-    assert stream_type == 1
-    assert data == b''
-
-
-@docker_skip
-def test_docker_sandbox_process_already_eof() -> None:
-    """DockerEnvironmentProcess._read_frame returns empty when already at EOF."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._eof = True
-
-    stream_type, data = proc._read_frame()
-    assert stream_type == 0
-    assert data == b''
+    async def test_docker_resolve_path(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment._resolve_path resolves relative paths."""
+        assert mock_docker_sandbox._resolve_path('test.txt') == '/workspace/test.txt'
+        assert mock_docker_sandbox._resolve_path('/abs/path') == '/abs/path'
+        assert mock_docker_sandbox._resolve_path('sub/dir/file.py') == '/workspace/sub/dir/file.py'
+
+    def test_docker_put_file(self) -> None:
+        """_put_file creates a tar archive and uploads it."""
+
+        container = MockContainer()
+        _put_file(container, '/workspace/test.txt', b'hello')  # type: ignore[arg-type]
+        assert '/workspace/test.txt' in container._files
+        assert container._files['/workspace/test.txt'] == b'hello'
+
+    def test_docker_sandbox_process_read_frame(self) -> None:
+        """DockerEnvironmentProcess._read_frame parses multiplexed stream frames."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        # Create a mock socket with a multiplexed frame
+        stdout_data = b'hello from stdout'
+        header = struct.pack('>BxxxI', 1, len(stdout_data))  # stream_type=1 (stdout)
+
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [header, stdout_data]
+        proc._socket = mock_socket
+
+        stream_type, data = proc._read_frame()
+        assert stream_type == 1
+        assert data == stdout_data
+
+    def test_docker_sandbox_process_read_frame_stderr(self) -> None:
+        """DockerEnvironmentProcess._read_frame handles stderr frames."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        stderr_data = b'error output'
+        header = struct.pack('>BxxxI', 2, len(stderr_data))  # stream_type=2 (stderr)
+
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [header, stderr_data]
+        proc._socket = mock_socket
+
+        stream_type, data = proc._read_frame()
+        assert stream_type == 2
+        assert data == stderr_data
+
+    def test_docker_sandbox_process_read_frame_eof(self) -> None:
+        """DockerEnvironmentProcess._read_frame returns empty on EOF."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        mock_socket = MagicMock()
+        mock_socket.recv.return_value = b''  # EOF
+        proc._socket = mock_socket
+
+        stream_type, data = proc._read_frame()
+        assert stream_type == 0
+        assert data == b''
+        assert proc._eof is True
+
+    def test_docker_sandbox_process_read_frame_zero_size(self) -> None:
+        """DockerEnvironmentProcess._read_frame handles zero-size frames."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        header = struct.pack('>BxxxI', 1, 0)  # zero size
+
+        mock_socket = MagicMock()
+        mock_socket.recv.return_value = header
+        proc._socket = mock_socket
+
+        stream_type, data = proc._read_frame()
+        assert stream_type == 1
+        assert data == b''
+
+    def test_docker_sandbox_process_already_eof(self) -> None:
+        """DockerEnvironmentProcess._read_frame returns empty when already at EOF."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._eof = True
+
+        stream_type, data = proc._read_frame()
+        assert stream_type == 0
+        assert data == b''
+
+    def test_docker_hardened_constructor(
+        self,
+    ):
+        """DockerEnvironment.hardened() returns a properly configured instance."""
+        env = DockerEnvironment.hardened(image='python:3.12-slim', memory_limit='1g')
+        assert env._network_disabled is True
+        assert env._read_only is True
+        assert env._cap_drop == ['ALL']
+        assert env._memory_limit == '1g'
+        assert env._user == 'nobody'
+        assert env._init is True
+
+    def test_docker_setup_early_return(
+        self,
+    ):
+        """DockerEnvironment._setup returns early if container already exists."""
+        env = DockerEnvironment(image='python:3.12-slim')
+        env._container = MagicMock()
+        env._setup()  # should not create a new container
+        assert env._client is None  # docker.from_env() was never called
+
+    async def test_docker_process_recv_stderr_no_buffer(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.recv_stderr without buffered data (no timeout)."""
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        stderr_data = b'error output'
+        header = struct.pack('>BxxxI', 2, len(stderr_data))
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [header, stderr_data]
+        proc._socket = mock_socket
+
+        result = await proc.recv_stderr()
+        assert result == stderr_data
+
+    async def test_docker_process_recv_stream_buffers_stdout(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess._recv_stream buffers stdout when stderr is wanted."""
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        # First frame is stdout (type 1), second is stderr (type 2)
+        stdout_data = b'stdout output'
+        stderr_data = b'stderr output'
+        stdout_header = struct.pack('>BxxxI', 1, len(stdout_data))
+        stderr_header = struct.pack('>BxxxI', 2, len(stderr_data))
+
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [stdout_header, stdout_data, stderr_header, stderr_data]
+        proc._socket = mock_socket
+
+        # Requesting stderr should buffer stdout and return stderr
+        result = await proc.recv_stderr()
+        assert result == stderr_data
+        assert proc._stdout_buffer == [stdout_data]
+
+    async def test_docker_process_wait_no_timeout(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.wait without timeout polls until returncode is set."""
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._exec_id = 'exec-123'
+        # Mock exec_inspect to return "still running" first, then "exited"
+        call_count = 0
+
+        def mock_inspect(exec_id: str) -> dict[str, Any]:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 1:
+                return {'Running': True, 'ExitCode': None}
+            return {'Running': False, 'ExitCode': 0}
+
+        container.client.api.exec_inspect = mock_inspect
+        result = await proc.wait()
+        assert result == 0
+        assert call_count >= 2
+
+    async def test_docker_process_wait_with_timeout(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.wait with timeout."""
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._returncode = 42
+        result = await proc.wait(timeout=5.0)
+        assert result == 42
+
+    async def test_docker_read_file_unicode_error(
+        self, mock_docker_sandbox: Any, mock_container: MockContainer
+    ) -> None:
+        """DockerEnvironment.read_file falls back to raw bytes on UnicodeDecodeError."""
+        # Store a binary file (not an image extension) that will fail utf-8 decode
+        binary_data = b'\x80\x81\x82\xff'
+        mock_container._files['/workspace/data.bin'] = binary_data
+
+        # Make the awk command return non-utf8 data to trigger UnicodeDecodeError
+        original = mock_container.exec_run
+
+        def exec_with_binary(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+            cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
+            if 'awk' in cmd_str and 'data.bin' in cmd_str:
+                return 0, b'\x80\x81\x82\xff'
+            return original(cmd, **kwargs)  # pragma: no cover
+
+        mock_container.exec_run = exec_with_binary  # type: ignore[assignment]
+        result = await mock_docker_sandbox.read_file('data.bin')
+        assert isinstance(result, bytes)
+
+    async def test_docker_ls_size_value_error(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.ls handles non-numeric size fields gracefully."""
+        original = mock_container.exec_run
+
+        def exec_with_bad_size(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+            cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
+            if 'ls -la' in cmd_str:
+                return 0, b'total 0\n-rw-r--r-- 1 root root NaN Jan  1 00:00 file.txt'
+            return original(cmd, **kwargs)  # pragma: no cover
+
+        mock_container.exec_run = exec_with_bad_size  # type: ignore[assignment]
+        entries = await mock_docker_sandbox.ls()
+        assert len(entries) == 1
+        assert entries[0].name == 'file.txt'
+        assert entries[0].size is None
+
+    async def test_docker_ls_short_line(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.ls skips lines with fewer than 9 fields."""
+        original = mock_container.exec_run
+
+        def exec_with_short_lines(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+            cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
+            if 'ls -la' in cmd_str:
+                return 0, b'total 0\nshort line\n-rw-r--r-- 1 root root 42 Jan  1 00:00 real.txt'
+            return original(cmd, **kwargs)  # pragma: no cover
+
+        mock_container.exec_run = exec_with_short_lines  # type: ignore[assignment]
+        entries = await mock_docker_sandbox.ls()
+        assert len(entries) == 1
+        assert entries[0].name == 'real.txt'
+
+    async def test_docker_is_alive_exception(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.is_alive returns False when reload raises."""
+        mock_container.reload = MagicMock(side_effect=Exception('connection error'))
+        result = await mock_docker_sandbox.is_alive()
+        assert result is False
+
+    async def test_docker_is_alive_running(self, mock_docker_sandbox: Any) -> None:
+        """DockerEnvironment.is_alive returns True when running."""
+        result = await mock_docker_sandbox.is_alive()
+        assert result is True
+
+    async def test_docker_process_recv_with_buffered_data(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.recv returns buffered stdout data first."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._stdout_buffer.append(b'buffered data')
+
+        result = await proc.recv()
+        assert result == b'buffered data'
+        assert proc._stdout_buffer == []
+
+    async def test_docker_process_recv_stderr_with_buffered_data(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.recv_stderr returns buffered stderr data first."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._stderr_buffer.append(b'buffered error')
+
+        result = await proc.recv_stderr()
+        assert result == b'buffered error'
+        assert proc._stderr_buffer == []
+
+    async def test_docker_process_recv_stream_buffers_other(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess._recv_stream buffers frames for the other stream."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        # First frame is stderr (type 2), second is stdout (type 1)
+        stderr_data = b'error output'
+        stdout_data = b'stdout output'
+        stderr_header = struct.pack('>BxxxI', 2, len(stderr_data))
+        stdout_header = struct.pack('>BxxxI', 1, len(stdout_data))
+
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [stderr_header, stderr_data, stdout_header, stdout_data]
+        proc._socket = mock_socket
+
+        # Requesting stdout should buffer stderr and return stdout
+        result = await proc.recv()
+        assert result == stdout_data
+        assert proc._stderr_buffer == [stderr_data]
+
+    async def test_docker_process_recv_stream_eof(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess._recv_stream returns empty on EOF."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        mock_socket = MagicMock()
+        mock_socket.recv.return_value = b''  # EOF
+        proc._socket = mock_socket
+
+        result = await proc.recv()
+        assert result == b''
+
+    async def test_docker_process_kill(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.kill closes the socket."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        mock_socket = MagicMock()
+        proc._socket = mock_socket
+
+        await proc.kill()
+        mock_socket.close.assert_called_once()
+
+    async def test_docker_process_kill_oserror(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.kill handles OSError."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        mock_socket = MagicMock()
+        mock_socket.close.side_effect = OSError('socket error')
+        proc._socket = mock_socket
+
+        # Should not raise
+        await proc.kill()
+
+    async def test_docker_process_returncode(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.returncode checks exec status."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        # No exec_id means returncode is None
+        assert proc.returncode is None
+
+        # With exec_id and cached returncode
+        proc._exec_id = 'exec-123'
+        proc._returncode = 0
+        assert proc.returncode == 0
+
+    async def test_docker_process_returncode_from_inspect(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.returncode polls Docker API."""
+
+        container = MockContainer()
+        container.client.api.exec_inspect.return_value = {'ExitCode': 42, 'Running': False}
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._exec_id = 'exec-123'
+
+        assert proc.returncode == 42
+        assert proc._returncode == 42
+
+    async def test_docker_process_returncode_still_running(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.returncode returns None when process is running (ExitCode=0, Running=True)."""
+
+        container = MockContainer()
+        # Docker returns ExitCode=0 + Running=True for still-running processes
+        container.client.api.exec_inspect.return_value = {'ExitCode': 0, 'Running': True}
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._exec_id = 'exec-123'
+
+        assert proc.returncode is None
+
+    async def test_docker_process_returncode_inspect_error(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.returncode handles API errors."""
+
+        container = MockContainer()
+        container.client.api.exec_inspect.side_effect = OSError('connection failed')
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc._exec_id = 'exec-123'
+
+        assert proc.returncode is None
+
+    async def test_docker_process_send(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.send writes to socket."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        mock_socket = MagicMock()
+        proc._socket = mock_socket
+
+        await proc.send(b'hello')
+        mock_socket.sendall.assert_called_once_with(b'hello')
+
+    async def test_docker_process_recv_with_timeout(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.recv with timeout."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        stdout_data = b'data'
+        header = struct.pack('>BxxxI', 1, len(stdout_data))
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [header, stdout_data]
+        proc._socket = mock_socket
+
+        result = await proc.recv(timeout=5.0)
+        assert result == stdout_data
+
+    async def test_docker_process_recv_stderr_with_timeout(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.recv_stderr with timeout."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        stderr_data = b'error'
+        header = struct.pack('>BxxxI', 2, len(stderr_data))
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [header, stderr_data]
+        proc._socket = mock_socket
+
+        result = await proc.recv_stderr(timeout=5.0)
+        assert result == stderr_data
+
+    async def test_docker_read_frame_data_eof_during_read(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess._read_frame handles EOF during data read."""
+
+        container = MockContainer()
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+        # Header says 100 bytes but socket returns less then EOF
+        header = struct.pack('>BxxxI', 1, 100)
+        mock_socket = MagicMock()
+        mock_socket.recv.side_effect = [header, b'partial', b'']  # EOF during data
+        proc._socket = mock_socket
+
+        stream_type, data = proc._read_frame()
+        assert stream_type == 1
+        assert data == b'partial'
+        assert proc._eof is True
+
+    async def test_docker_process_start_with_env(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess._do_start passes env to exec_create."""
+
+        container = MockContainer()
+        container.client.api.exec_create.return_value = {'Id': 'exec-test'}
+        mock_sock = MagicMock()
+        container.client.api.exec_start.return_value = mock_sock
+
+        proc = DockerEnvironmentProcess(
+            container,  # type: ignore[arg-type]
+            'echo test',
+            '/workspace',
+            env={'FOO': 'bar'},
+        )
+        await proc._start()
+
+        assert proc._exec_id == 'exec-test'
+        call_kwargs = container.client.api.exec_create.call_args[1]
+        assert call_kwargs['environment'] == {'FOO': 'bar'}
+
+    async def test_docker_process_aenter(
+        self,
+    ) -> None:
+        """DockerEnvironmentProcess.__aenter__ starts the process."""
+
+        container = MockContainer()
+        container.client.api.exec_create.return_value = {'Id': 'exec-aenter'}
+        mock_sock = MagicMock()
+        container.client.api.exec_start.return_value = mock_sock
+
+        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        entered = await proc.__aenter__()
+        assert entered is proc
+        assert proc._exec_id == 'exec-aenter'
+
+    async def test_docker_ls_not_found(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.ls raises NotADirectoryError on missing dirs."""
+        original = mock_container.exec_run
+
+        def fail_ls(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+            if isinstance(cmd, list) and 'ls -la' in ' '.join(cmd):
+                return 1, b'ls: cannot access: No such file or directory'
+            return original(cmd, **kwargs)  # pragma: no cover
+
+        mock_container.exec_run = fail_ls  # type: ignore[assignment]
+        with pytest.raises(NotADirectoryError):
+            await mock_docker_sandbox.ls('nonexistent')
+
+    async def test_docker_read_file_image_not_found(
+        self, mock_docker_sandbox: Any, mock_container: MockContainer
+    ) -> None:
+        """DockerEnvironment.read_file raises FileNotFoundError for missing image files."""
+
+        def fail_get_archive(path: str) -> Any:
+            raise DockerNotFound('File not found')
+
+        mock_container.get_archive = fail_get_archive
+        with pytest.raises(FileNotFoundError, match='File not found: missing.png'):
+            await mock_docker_sandbox.read_file('missing.png')
+
+    # --- Additional Docker coverage: lifecycle, process, truncation ---
+
+    async def test_docker_execute_truncation(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+        """DockerEnvironment.execute truncates long output."""
+        original = mock_container.exec_run
+
+        def big_output(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+            if isinstance(cmd, list) and 'echo' in str(cmd):
+                return 0, b'x' * 200_000
+            return original(cmd, **kwargs)  # pragma: no cover
+
+        mock_container.exec_run = big_output  # type: ignore[assignment]
+        result = await mock_docker_sandbox.shell('echo big')
+        assert result.truncated is True
+        assert len(result.output) == 100_000
+
+    async def test_docker_execute_timeout_exit_code(
+        self, mock_docker_sandbox: Any, mock_container: MockContainer
+    ) -> None:
+        """DockerEnvironment.execute handles timeout exit code 124."""
+
+        def timeout_result(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+            return 124, b'partial output'
+
+        mock_container.exec_run = timeout_result  # type: ignore[assignment]
+        result = await mock_docker_sandbox.shell('sleep 999', timeout=1)
+        assert result.exit_code == 124
+        assert '[Command timed out]' in result.output
+
+    async def test_docker_setup_teardown(
+        self,
+    ) -> None:
+        """DockerEnvironment._setup and _teardown with mocked Docker client."""
+        sandbox = DockerEnvironment(image='python:3.12-slim')
+
+        mock_client = MagicMock()
+        mock_container_obj = MagicMock()
+        mock_client.containers.run.return_value = mock_container_obj
+
+        with mock_patch('pydantic_ai.environments.docker.docker') as mock_docker:
+            mock_docker.from_env.return_value = mock_client
+            sandbox._setup()
+            assert sandbox._container is not None
+
+        # Teardown
+        sandbox._teardown()
+        mock_container_obj.stop.assert_called()
+        mock_container_obj.remove.assert_called()
+        assert sandbox._container is None
+
+    async def test_docker_teardown_cleanup_errors(
+        self,
+    ) -> None:
+        """DockerEnvironment._teardown handles exceptions gracefully."""
+
+        sandbox = DockerEnvironment()
+        mock_container = MagicMock()
+        mock_container.stop.side_effect = Exception('stop failed')
+        mock_container.remove.side_effect = Exception('remove failed')
+        sandbox._container = mock_container
+
+        # Should not raise
+        sandbox._teardown()
+        assert sandbox._container is None
+
+    async def test_docker_setup_with_all_options(
+        self,
+    ) -> None:
+        """DockerEnvironment._setup passes all container options."""
+        sandbox = DockerEnvironment(
+            image='python:3.12-slim',
+            env_vars={'KEY': 'val'},
+            volumes={'/host': {'bind': '/container', 'mode': 'rw'}},
+            memory_limit='512m',
+            cpu_limit=1.0,
+            pids_limit=256,
+            network_disabled=True,
+            read_only=True,
+            cap_drop=['ALL'],
+            security_opt=['no-new-privileges'],
+            user='nobody',
+            tmpfs={'/tmp': 'noexec,nosuid,size=64m'},
+            init=True,
+        )
+
+        mock_client = MagicMock()
+        mock_container = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+
+        with mock_patch('pydantic_ai.environments.docker.docker') as mock_docker:
+            mock_docker.from_env.return_value = mock_client
+            sandbox._setup()
+
+        call_kwargs = mock_client.containers.run.call_args[1]
+        assert call_kwargs['volumes'] == {'/host': {'bind': '/container', 'mode': 'rw'}}
+        assert call_kwargs['mem_limit'] == '512m'
+        assert call_kwargs['nano_cpus'] == int(1e9)
+        assert call_kwargs['pids_limit'] == 256
+        assert call_kwargs['network_disabled'] is True
+        assert call_kwargs['read_only'] is True
+        assert call_kwargs['cap_drop'] == ['ALL']
+        assert call_kwargs['security_opt'] == ['no-new-privileges']
+        assert call_kwargs['user'] == 'nobody'
+        assert call_kwargs['tmpfs'] == {'/tmp': 'noexec,nosuid,size=64m'}
+        assert call_kwargs['init'] is True
+
+    # --- Docker instantiation tests ---
+
+    def test_docker_sandbox_instantiation(
+        self,
+    ):
+        """DockerEnvironment can be constructed without starting Docker."""
+
+        # Verify construction succeeds with default and custom settings
+        sandbox = DockerEnvironment(image='python:3.12-slim')
+        assert isinstance(sandbox, DockerEnvironment)
+
+        sandbox_with_opts = DockerEnvironment(
+            image='node:20-slim',
+            memory_limit='512m',
+            cpu_limit=1.0,
+            network_disabled=True,
+        )
+        assert isinstance(sandbox_with_opts, DockerEnvironment)
+
+        # Verify security hardening parameters are accepted
+        sandbox_hardened = DockerEnvironment(
+            image='python:3.12-slim',
+            network_disabled=True,
+            read_only=True,
+            cap_drop=['ALL'],
+            security_opt=['no-new-privileges'],
+            user='nobody',
+            pids_limit=256,
+            tmpfs={'/tmp': 'noexec,nosuid,size=64m'},
+            init=True,
+        )
+        assert isinstance(sandbox_hardened, DockerEnvironment)
+
+    def test_shell_escape(self):
+        assert _shell_escape('hello') == "'hello'"
+        assert _shell_escape("it's") == "'it'\\''s'"
+        assert _shell_escape('') == "''"
+        assert _shell_escape('a b c') == "'a b c'"
+
+    def test_build_read_file_cmd_default(self):
+        cmd = _build_read_file_cmd('test.txt')
+        assert 'awk' in cmd
+        assert "'test.txt'" in cmd
+        assert 'NR>=1' in cmd
+        assert 'NR<=2000' in cmd
+
+    def test_build_read_file_cmd_with_offset(self):
+        cmd = _build_read_file_cmd('file.py', offset=10, limit=50)
+        assert 'NR>=11' in cmd
+        assert 'NR<=60' in cmd
+        assert "'file.py'" in cmd
+
+    def test_build_read_file_cmd_continuation_hint(self):
+        """_build_read_file_cmd includes a continuation hint in the awk END block."""
+        cmd = _build_read_file_cmd('file.py', offset=0, limit=10)
+        assert 'more lines' in cmd
+        assert 'offset=10' in cmd
+
+    def test_build_grep_cmd_content(self):
+        cmd = _build_grep_cmd('pattern')
+        assert 'grep -rIE' in cmd
+        assert '-n' in cmd
+        assert "'pattern'" in cmd
+        assert "'.'" in cmd
+
+    def test_build_grep_cmd_files_with_matches(self):
+        cmd = _build_grep_cmd('pat', output_mode='files_with_matches')
+        assert '-l' in cmd
+        assert '-n' not in cmd
+
+    def test_build_grep_cmd_count(self):
+        cmd = _build_grep_cmd('pat', output_mode='count')
+        assert '-c' in cmd
+
+    def test_build_grep_cmd_with_path(self):
+        cmd = _build_grep_cmd('pat', path='src')
+        assert "'src'" in cmd
+
+    def test_build_grep_cmd_with_glob_pattern(self):
+        """glob_pattern is shell-escaped to prevent injection."""
+        cmd = _build_grep_cmd('pat', glob_pattern='*.py')
+        assert '--include' in cmd
+        assert "'*.py'" in cmd
+
+    def test_build_grep_cmd_glob_pattern_escaping(self):
+        """Verify glob_pattern with special chars is properly shell-escaped."""
+        cmd = _build_grep_cmd('pat', glob_pattern='*.py')
+        # The glob pattern should be shell-escaped (wrapped in single quotes)
+        assert "--include '*.py'" in cmd
+
+        # Even a malicious glob_pattern gets safely escaped
+        cmd2 = _build_grep_cmd('pat', glob_pattern='$(evil)')
+        assert '$(evil)' not in cmd2.replace("'$(evil)'", '')  # Only appears inside quotes
+
+    def test_build_glob_cmd(self):
+        cmd = _build_glob_cmd('*.py')
+        assert 'find' in cmd
+        assert "'*.py'" in cmd
+        assert "'.'" in cmd
+        assert '-maxdepth 1' in cmd
+
+    def test_build_glob_cmd_with_path(self):
+        cmd = _build_glob_cmd('*.py', path='src')
+        assert "'src'" in cmd
+        assert '-maxdepth 1' in cmd
+
+    def test_build_glob_cmd_nested_pattern(self):
+        cmd = _build_glob_cmd('src/*.py')
+        assert '-maxdepth 2' in cmd
+
+    def test_build_glob_cmd_recursive_no_maxdepth(self):
+        cmd = _build_glob_cmd('**/*.py')
+        assert '-maxdepth' not in cmd
+
+    def test_parse_glob_output_empty(self):
+        assert _parse_glob_output('') == []
+        assert _parse_glob_output('  ') == []
+        assert _parse_glob_output('\n') == []
+
+    def test_parse_glob_output_multiline(self):
+        assert _parse_glob_output('a.py\nb.py\nc.py\n') == ['a.py', 'b.py', 'c.py']
+
+    def test_filter_grep_count_output(self):
+        text = 'a.py:3\nb.py:0\nc.py:1'
+        result = _filter_grep_count_output(text)
+        assert result == 'a.py:3\nc.py:1'
+
+    def test_filter_grep_count_output_all_zero(self):
+        text = 'a.py:0\nb.py:0'
+        result = _filter_grep_count_output(text)
+        assert result == ''
 
 
 # --- Additional coverage: _base.py ---
@@ -2503,387 +2969,6 @@ async def test_memory_glob_in_subdirectory_with_path_filter():
     matches = await env.glob('*.py', path='src')
     assert 'src/a.py' in matches
     assert 'other.py' not in matches
-
-
-# --- Additional Docker coverage: lifecycle, process, truncation ---
-
-
-async def test_docker_execute_truncation(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.execute truncates long output."""
-    original = mock_container.exec_run
-
-    def big_output(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
-        if isinstance(cmd, list) and 'echo' in str(cmd):
-            return 0, b'x' * 200_000
-        return original(cmd, **kwargs)  # pragma: no cover
-
-    mock_container.exec_run = big_output  # type: ignore[assignment]
-    result = await mock_docker_sandbox.shell('echo big')
-    assert result.truncated is True
-    assert len(result.output) == 100_000
-
-
-async def test_docker_execute_timeout_exit_code(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.execute handles timeout exit code 124."""
-
-    def timeout_result(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
-        return 124, b'partial output'
-
-    mock_container.exec_run = timeout_result  # type: ignore[assignment]
-    result = await mock_docker_sandbox.shell('sleep 999', timeout=1)
-    assert result.exit_code == 124
-    assert '[Command timed out]' in result.output
-
-
-@docker_skip
-async def test_docker_setup_teardown() -> None:
-    """DockerEnvironment._setup and _teardown with mocked Docker client."""
-    sandbox = DockerEnvironment(image='python:3.12-slim')
-
-    mock_client = MagicMock()
-    mock_container_obj = MagicMock()
-    mock_client.containers.run.return_value = mock_container_obj
-
-    with mock_patch('pydantic_ai.environments.docker.docker') as mock_docker:
-        mock_docker.from_env.return_value = mock_client
-        sandbox._setup()
-        assert sandbox._container is not None
-
-    # Teardown
-    sandbox._teardown()
-    mock_container_obj.stop.assert_called()
-    mock_container_obj.remove.assert_called()
-    assert sandbox._container is None
-
-
-@docker_skip
-async def test_docker_teardown_cleanup_errors() -> None:
-    """DockerEnvironment._teardown handles exceptions gracefully."""
-
-    sandbox = DockerEnvironment()
-    mock_container = MagicMock()
-    mock_container.stop.side_effect = Exception('stop failed')
-    mock_container.remove.side_effect = Exception('remove failed')
-    sandbox._container = mock_container
-
-    # Should not raise
-    sandbox._teardown()
-    assert sandbox._container is None
-
-
-@docker_skip
-async def test_docker_setup_with_all_options() -> None:
-    """DockerEnvironment._setup passes all container options."""
-    sandbox = DockerEnvironment(
-        image='python:3.12-slim',
-        env_vars={'KEY': 'val'},
-        volumes={'/host': {'bind': '/container', 'mode': 'rw'}},
-        memory_limit='512m',
-        cpu_limit=1.0,
-        pids_limit=256,
-        network_disabled=True,
-        read_only=True,
-        cap_drop=['ALL'],
-        security_opt=['no-new-privileges'],
-        user='nobody',
-        tmpfs={'/tmp': 'noexec,nosuid,size=64m'},
-        init=True,
-    )
-
-    mock_client = MagicMock()
-    mock_container = MagicMock()
-    mock_client.containers.run.return_value = mock_container
-
-    with mock_patch('pydantic_ai.environments.docker.docker') as mock_docker:
-        mock_docker.from_env.return_value = mock_client
-        sandbox._setup()
-
-    call_kwargs = mock_client.containers.run.call_args[1]
-    assert call_kwargs['volumes'] == {'/host': {'bind': '/container', 'mode': 'rw'}}
-    assert call_kwargs['mem_limit'] == '512m'
-    assert call_kwargs['nano_cpus'] == int(1e9)
-    assert call_kwargs['pids_limit'] == 256
-    assert call_kwargs['network_disabled'] is True
-    assert call_kwargs['read_only'] is True
-    assert call_kwargs['cap_drop'] == ['ALL']
-    assert call_kwargs['security_opt'] == ['no-new-privileges']
-    assert call_kwargs['user'] == 'nobody'
-    assert call_kwargs['tmpfs'] == {'/tmp': 'noexec,nosuid,size=64m'}
-    assert call_kwargs['init'] is True
-
-
-@docker_skip
-async def test_docker_process_recv_with_buffered_data() -> None:
-    """DockerEnvironmentProcess.recv returns buffered stdout data first."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._stdout_buffer.append(b'buffered data')
-
-    result = await proc.recv()
-    assert result == b'buffered data'
-    assert proc._stdout_buffer == []
-
-
-@docker_skip
-async def test_docker_process_recv_stderr_with_buffered_data() -> None:
-    """DockerEnvironmentProcess.recv_stderr returns buffered stderr data first."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._stderr_buffer.append(b'buffered error')
-
-    result = await proc.recv_stderr()
-    assert result == b'buffered error'
-    assert proc._stderr_buffer == []
-
-
-@docker_skip
-async def test_docker_process_recv_stream_buffers_other() -> None:
-    """DockerEnvironmentProcess._recv_stream buffers frames for the other stream."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    # First frame is stderr (type 2), second is stdout (type 1)
-    stderr_data = b'error output'
-    stdout_data = b'stdout output'
-    stderr_header = struct.pack('>BxxxI', 2, len(stderr_data))
-    stdout_header = struct.pack('>BxxxI', 1, len(stdout_data))
-
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [stderr_header, stderr_data, stdout_header, stdout_data]
-    proc._socket = mock_socket
-
-    # Requesting stdout should buffer stderr and return stdout
-    result = await proc.recv()
-    assert result == stdout_data
-    assert proc._stderr_buffer == [stderr_data]
-
-
-@docker_skip
-async def test_docker_process_recv_stream_eof() -> None:
-    """DockerEnvironmentProcess._recv_stream returns empty on EOF."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    mock_socket = MagicMock()
-    mock_socket.recv.return_value = b''  # EOF
-    proc._socket = mock_socket
-
-    result = await proc.recv()
-    assert result == b''
-
-
-@docker_skip
-async def test_docker_process_kill() -> None:
-    """DockerEnvironmentProcess.kill closes the socket."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    mock_socket = MagicMock()
-    proc._socket = mock_socket
-
-    await proc.kill()
-    mock_socket.close.assert_called_once()
-
-
-@docker_skip
-async def test_docker_process_kill_oserror() -> None:
-    """DockerEnvironmentProcess.kill handles OSError."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    mock_socket = MagicMock()
-    mock_socket.close.side_effect = OSError('socket error')
-    proc._socket = mock_socket
-
-    # Should not raise
-    await proc.kill()
-
-
-@docker_skip
-async def test_docker_process_returncode() -> None:
-    """DockerEnvironmentProcess.returncode checks exec status."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    # No exec_id means returncode is None
-    assert proc.returncode is None
-
-    # With exec_id and cached returncode
-    proc._exec_id = 'exec-123'
-    proc._returncode = 0
-    assert proc.returncode == 0
-
-
-@docker_skip
-async def test_docker_process_returncode_from_inspect() -> None:
-    """DockerEnvironmentProcess.returncode polls Docker API."""
-
-    container = MockContainer()
-    container.client.api.exec_inspect.return_value = {'ExitCode': 42, 'Running': False}
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._exec_id = 'exec-123'
-
-    assert proc.returncode == 42
-    assert proc._returncode == 42
-
-
-@docker_skip
-async def test_docker_process_returncode_still_running() -> None:
-    """DockerEnvironmentProcess.returncode returns None when process is running (ExitCode=0, Running=True)."""
-
-    container = MockContainer()
-    # Docker returns ExitCode=0 + Running=True for still-running processes
-    container.client.api.exec_inspect.return_value = {'ExitCode': 0, 'Running': True}
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._exec_id = 'exec-123'
-
-    assert proc.returncode is None
-
-
-@docker_skip
-async def test_docker_process_returncode_inspect_error() -> None:
-    """DockerEnvironmentProcess.returncode handles API errors."""
-
-    container = MockContainer()
-    container.client.api.exec_inspect.side_effect = OSError('connection failed')
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._exec_id = 'exec-123'
-
-    assert proc.returncode is None
-
-
-@docker_skip
-async def test_docker_process_send() -> None:
-    """DockerEnvironmentProcess.send writes to socket."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    mock_socket = MagicMock()
-    proc._socket = mock_socket
-
-    await proc.send(b'hello')
-    mock_socket.sendall.assert_called_once_with(b'hello')
-
-
-@docker_skip
-async def test_docker_process_recv_with_timeout() -> None:
-    """DockerEnvironmentProcess.recv with timeout."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    stdout_data = b'data'
-    header = struct.pack('>BxxxI', 1, len(stdout_data))
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [header, stdout_data]
-    proc._socket = mock_socket
-
-    result = await proc.recv(timeout=5.0)
-    assert result == stdout_data
-
-
-@docker_skip
-async def test_docker_process_recv_stderr_with_timeout() -> None:
-    """DockerEnvironmentProcess.recv_stderr with timeout."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    stderr_data = b'error'
-    header = struct.pack('>BxxxI', 2, len(stderr_data))
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [header, stderr_data]
-    proc._socket = mock_socket
-
-    result = await proc.recv_stderr(timeout=5.0)
-    assert result == stderr_data
-
-
-@docker_skip
-async def test_docker_read_frame_data_eof_during_read() -> None:
-    """DockerEnvironmentProcess._read_frame handles EOF during data read."""
-
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    # Header says 100 bytes but socket returns less then EOF
-    header = struct.pack('>BxxxI', 1, 100)
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [header, b'partial', b'']  # EOF during data
-    proc._socket = mock_socket
-
-    stream_type, data = proc._read_frame()
-    assert stream_type == 1
-    assert data == b'partial'
-    assert proc._eof is True
-
-
-@docker_skip
-async def test_docker_process_start_with_env() -> None:
-    """DockerEnvironmentProcess._do_start passes env to exec_create."""
-
-    container = MockContainer()
-    container.client.api.exec_create.return_value = {'Id': 'exec-test'}
-    mock_sock = MagicMock()
-    container.client.api.exec_start.return_value = mock_sock
-
-    proc = DockerEnvironmentProcess(
-        container,  # type: ignore[arg-type]
-        'echo test',
-        '/workspace',
-        env={'FOO': 'bar'},
-    )
-    await proc._start()
-
-    assert proc._exec_id == 'exec-test'
-    call_kwargs = container.client.api.exec_create.call_args[1]
-    assert call_kwargs['environment'] == {'FOO': 'bar'}
-
-
-@docker_skip
-async def test_docker_process_aenter() -> None:
-    """DockerEnvironmentProcess.__aenter__ starts the process."""
-
-    container = MockContainer()
-    container.client.api.exec_create.return_value = {'Id': 'exec-aenter'}
-    mock_sock = MagicMock()
-    container.client.api.exec_start.return_value = mock_sock
-
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    entered = await proc.__aenter__()
-    assert entered is proc
-    assert proc._exec_id == 'exec-aenter'
-
-
-async def test_docker_ls_not_found(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.ls raises NotADirectoryError on missing dirs."""
-    original = mock_container.exec_run
-
-    def fail_ls(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
-        if isinstance(cmd, list) and 'ls -la' in ' '.join(cmd):
-            return 1, b'ls: cannot access: No such file or directory'
-        return original(cmd, **kwargs)  # pragma: no cover
-
-    mock_container.exec_run = fail_ls  # type: ignore[assignment]
-    with pytest.raises(NotADirectoryError):
-        await mock_docker_sandbox.ls('nonexistent')
-
-
-@docker_skip
-async def test_docker_read_file_image_not_found(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.read_file raises FileNotFoundError for missing image files."""
-
-    def fail_get_archive(path: str) -> Any:
-        raise DockerNotFound('File not found')
-
-    mock_container.get_archive = fail_get_archive
-    with pytest.raises(FileNotFoundError, match='File not found: missing.png'):
-        await mock_docker_sandbox.read_file('missing.png')
 
 
 async def test_local_process_wait_no_timeout(tmp_path: Path):
@@ -3186,168 +3271,6 @@ async def test_toolset_use_environment_filters_tools():
 
 
 # --- Coverage gap tests ---
-
-
-@docker_skip
-def test_docker_hardened_constructor():
-    """DockerEnvironment.hardened() returns a properly configured instance."""
-    env = DockerEnvironment.hardened(image='python:3.12-slim', memory_limit='1g')
-    assert env._network_disabled is True
-    assert env._read_only is True
-    assert env._cap_drop == ['ALL']
-    assert env._memory_limit == '1g'
-    assert env._user == 'nobody'
-    assert env._init is True
-
-
-@docker_skip
-def test_docker_setup_early_return():
-    """DockerEnvironment._setup returns early if container already exists."""
-    env = DockerEnvironment(image='python:3.12-slim')
-    env._container = MagicMock()
-    env._setup()  # should not create a new container
-    assert env._client is None  # docker.from_env() was never called
-
-
-@docker_skip
-async def test_docker_process_recv_stderr_no_buffer() -> None:
-    """DockerEnvironmentProcess.recv_stderr without buffered data (no timeout)."""
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    stderr_data = b'error output'
-    header = struct.pack('>BxxxI', 2, len(stderr_data))
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [header, stderr_data]
-    proc._socket = mock_socket
-
-    result = await proc.recv_stderr()
-    assert result == stderr_data
-
-
-@docker_skip
-async def test_docker_process_recv_stream_buffers_stdout() -> None:
-    """DockerEnvironmentProcess._recv_stream buffers stdout when stderr is wanted."""
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-
-    # First frame is stdout (type 1), second is stderr (type 2)
-    stdout_data = b'stdout output'
-    stderr_data = b'stderr output'
-    stdout_header = struct.pack('>BxxxI', 1, len(stdout_data))
-    stderr_header = struct.pack('>BxxxI', 2, len(stderr_data))
-
-    mock_socket = MagicMock()
-    mock_socket.recv.side_effect = [stdout_header, stdout_data, stderr_header, stderr_data]
-    proc._socket = mock_socket
-
-    # Requesting stderr should buffer stdout and return stderr
-    result = await proc.recv_stderr()
-    assert result == stderr_data
-    assert proc._stdout_buffer == [stdout_data]
-
-
-@docker_skip
-async def test_docker_process_wait_no_timeout() -> None:
-    """DockerEnvironmentProcess.wait without timeout polls until returncode is set."""
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._exec_id = 'exec-123'
-    # Mock exec_inspect to return "still running" first, then "exited"
-    call_count = 0
-
-    def mock_inspect(exec_id: str) -> dict[str, Any]:
-        nonlocal call_count
-        call_count += 1
-        if call_count <= 1:
-            return {'Running': True, 'ExitCode': None}
-        return {'Running': False, 'ExitCode': 0}
-
-    container.client.api.exec_inspect = mock_inspect
-    result = await proc.wait()
-    assert result == 0
-    assert call_count >= 2
-
-
-@docker_skip
-async def test_docker_process_wait_with_timeout() -> None:
-    """DockerEnvironmentProcess.wait with timeout."""
-    container = MockContainer()
-    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
-    proc._returncode = 42
-    result = await proc.wait(timeout=5.0)
-    assert result == 42
-
-
-@docker_skip
-async def test_docker_read_file_unicode_error(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.read_file falls back to raw bytes on UnicodeDecodeError."""
-    # Store a binary file (not an image extension) that will fail utf-8 decode
-    binary_data = b'\x80\x81\x82\xff'
-    mock_container._files['/workspace/data.bin'] = binary_data
-
-    # Make the awk command return non-utf8 data to trigger UnicodeDecodeError
-    original = mock_container.exec_run
-
-    def exec_with_binary(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
-        cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
-        if 'awk' in cmd_str and 'data.bin' in cmd_str:
-            return 0, b'\x80\x81\x82\xff'
-        return original(cmd, **kwargs)  # pragma: no cover
-
-    mock_container.exec_run = exec_with_binary  # type: ignore[assignment]
-    result = await mock_docker_sandbox.read_file('data.bin')
-    assert isinstance(result, bytes)
-
-
-@docker_skip
-async def test_docker_ls_size_value_error(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.ls handles non-numeric size fields gracefully."""
-    original = mock_container.exec_run
-
-    def exec_with_bad_size(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
-        cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
-        if 'ls -la' in cmd_str:
-            return 0, b'total 0\n-rw-r--r-- 1 root root NaN Jan  1 00:00 file.txt'
-        return original(cmd, **kwargs)  # pragma: no cover
-
-    mock_container.exec_run = exec_with_bad_size  # type: ignore[assignment]
-    entries = await mock_docker_sandbox.ls()
-    assert len(entries) == 1
-    assert entries[0].name == 'file.txt'
-    assert entries[0].size is None
-
-
-@docker_skip
-async def test_docker_ls_short_line(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.ls skips lines with fewer than 9 fields."""
-    original = mock_container.exec_run
-
-    def exec_with_short_lines(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
-        cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
-        if 'ls -la' in cmd_str:
-            return 0, b'total 0\nshort line\n-rw-r--r-- 1 root root 42 Jan  1 00:00 real.txt'
-        return original(cmd, **kwargs)  # pragma: no cover
-
-    mock_container.exec_run = exec_with_short_lines  # type: ignore[assignment]
-    entries = await mock_docker_sandbox.ls()
-    assert len(entries) == 1
-    assert entries[0].name == 'real.txt'
-
-
-@docker_skip
-async def test_docker_is_alive_exception(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.is_alive returns False when reload raises."""
-    mock_container.reload = MagicMock(side_effect=Exception('connection error'))
-    result = await mock_docker_sandbox.is_alive()
-    assert result is False
-
-
-@docker_skip
-async def test_docker_is_alive_running(mock_docker_sandbox: Any) -> None:
-    """DockerEnvironment.is_alive returns True when running."""
-    result = await mock_docker_sandbox.is_alive()
-    assert result is True
 
 
 async def test_local_recv_no_timeout(tmp_path: Path):
