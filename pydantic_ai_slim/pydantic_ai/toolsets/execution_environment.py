@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import posixpath
 import re
-from asyncio import Lock
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import AsyncExitStack, contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, Any, Literal
 
+import anyio
 from typing_extensions import Self
 
 from ..environments._base import (
@@ -115,7 +115,7 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
         self._max_image_bytes = max_image_bytes
         self._require_shell_approval = require_shell_approval
         self._require_write_approval = require_write_approval
-        self._enter_lock: Lock = Lock()
+        self._enter_lock = anyio.Lock()
         self._running_count: int = 0
         self._exit_stack: AsyncExitStack | None = None
 
