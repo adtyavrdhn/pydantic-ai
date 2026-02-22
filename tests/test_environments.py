@@ -1844,17 +1844,29 @@ class MockContainer:
 
         # Handle awk (read_file)
         if 'awk' in cmd_str:
+            # Parse start/end from the awk NR range: NR>=start && NR<=end
+            import re as _re
+
+            nr_match = _re.search(r'NR>=(\d+) && NR<=(\d+)', cmd_str)
+            start = int(nr_match.group(1)) if nr_match else 1
+            end = int(nr_match.group(2)) if nr_match else 2000
             # Try to find the file by matching path in the awk command.
-            # The path is shell-escaped (e.g. 'test.txt'), so check both
-            # the full path and relative to workdir.
             for fpath, data in self._files.items():
-                # Check if the filename or path appears in the command
                 name = fpath.rsplit('/', 1)[-1] if '/' in fpath else fpath
                 if name in cmd_str or fpath in cmd_str:  # pragma: no branch
                     text = data.decode('utf-8', errors='replace')
                     lines = text.splitlines(keepends=True)
-                    numbered = [f'{i:>6}\t{line}' for i, line in enumerate(lines, start=1)]
-                    return 0, ''.join(numbered).encode('utf-8')
+                    total = len(lines)
+                    # Offset exceeds file length
+                    if total > 0 and total < start:
+                        return 0, f'__OFFSET_ERROR__:{total}\n'.encode()
+                    selected = lines[start - 1 : end]
+                    numbered = [f'{i:>6}\t{line}' for i, line in enumerate(selected, start=start)]
+                    result = ''.join(numbered)
+                    remaining = total - end
+                    if remaining > 0:
+                        result += f'... ({remaining} more lines. Use offset={end} to continue reading.)\n'
+                    return 0, result.encode('utf-8')
             return 1, b'File not found'
 
         # Handle ls -la
@@ -1977,6 +1989,23 @@ async def test_docker_read_file_not_found(mock_docker_sandbox: Any) -> None:
     """DockerEnvironment.read_file on missing file raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         await mock_docker_sandbox.read_file('nonexistent.txt')
+
+
+async def test_docker_read_file_offset_out_of_range(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+    """DockerEnvironment.read_file raises ValueError when offset exceeds file length."""
+    mock_container._files['/workspace/small.txt'] = b'line1\nline2\nline3\n'
+    with pytest.raises(ValueError, match='Offset 10 exceeds file length \\(3 lines\\)'):
+        await mock_docker_sandbox.read_file('small.txt', offset=10)
+
+
+async def test_docker_read_file_with_offset(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+    """DockerEnvironment.read_file respects offset and limit."""
+    mock_container._files['/workspace/lines.txt'] = b'a\nb\nc\nd\ne\n'
+    result = await mock_docker_sandbox.read_file('lines.txt', offset=2, limit=2)
+    assert isinstance(result, str)
+    assert '     3\tc\n' in result
+    assert '     4\td\n' in result
+    assert '... (1 more lines. Use offset=4 to continue reading.)' in result
 
 
 async def test_docker_read_file_image(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
@@ -2818,13 +2847,13 @@ async def test_docker_ls_not_found(mock_docker_sandbox: Any, mock_container: Moc
 
 @docker_skip
 async def test_docker_read_file_image_not_found(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
-    """DockerEnvironment.read_file raises DockerNotFound for missing image files."""
+    """DockerEnvironment.read_file raises FileNotFoundError for missing image files."""
 
     def fail_get_archive(path: str) -> Any:
         raise DockerNotFound('File not found')
 
     mock_container.get_archive = fail_get_archive
-    with pytest.raises(DockerNotFound):
+    with pytest.raises(FileNotFoundError, match='File not found: missing.png'):
         await mock_docker_sandbox.read_file('missing.png')
 
 

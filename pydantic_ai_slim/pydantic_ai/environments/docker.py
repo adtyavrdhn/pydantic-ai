@@ -30,7 +30,7 @@ from ._base import (
 
 try:
     import docker
-    from docker.errors import DockerException
+    from docker.errors import DockerException, NotFound
     from docker.models.containers import Container
 except ImportError as _import_error:
     raise ImportError(
@@ -51,7 +51,10 @@ def _build_read_file_cmd(path: str, *, offset: int = 0, limit: int = 2000) -> st
     end = offset + limit
     return (
         f'awk \'NR>={start} && NR<={end} {{printf "%6d\\t%s\\n", NR, $0}}'
-        f' END {{if(NR>{end}) printf "... (%d more lines. Use offset={end} to continue reading.)\\n", NR-{end}}}\''
+        f' END {{'
+        f'if(NR>{end}) printf "... (%d more lines. Use offset={end} to continue reading.)\\n", NR-{end};'
+        f' else if(NR>0 && NR<{start}) printf "__OFFSET_ERROR__:%d\\n", NR'
+        f"}}'"
         f' {escaped}'
     )
 
@@ -545,15 +548,22 @@ class DockerEnvironment(ExecutionEnvironment):
             if exit_code != 0:
                 raise FileNotFoundError(f'File not found or not readable: {path}')
             try:
-                return output.decode('utf-8')
+                text = output.decode('utf-8')
             except UnicodeDecodeError:
                 return self._read_file_bytes_sync(path)
+            if text.startswith('__OFFSET_ERROR__:'):
+                total_lines = int(text.split(':')[1].strip())
+                raise ValueError(f'Offset {offset} exceeds file length ({total_lines} lines).')
+            return text
 
         return await anyio.to_thread.run_sync(_read)
 
     def _read_file_bytes_sync(self, path: str) -> bytes:
         """Read raw file bytes using Docker's get_archive API."""
-        bits, _ = self.container.get_archive(self._resolve_path(path))
+        try:
+            bits, _ = self.container.get_archive(self._resolve_path(path))
+        except NotFound:
+            raise FileNotFoundError(f'File not found: {path}')
         # get_archive returns a tar stream
         tar_bytes = b''.join(bits)
         with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
