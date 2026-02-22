@@ -379,6 +379,16 @@ async def test_local_glob(tmp_path: Path):
         assert not any('data.json' in m for m in matches)
 
 
+async def test_local_glob_non_recursive(tmp_path: Path):
+    async with LocalEnvironment(tmp_path) as env:
+        await env.write_file('top.py', '# top')
+        await env.write_file('sub/nested.py', '# nested')
+
+        # Non-recursive pattern should only match in the target directory
+        matches = await env.glob('*.py')
+        assert matches == ['top.py']
+
+
 async def test_local_glob_no_matches(tmp_path: Path):
     async with LocalEnvironment(tmp_path) as env:
         matches = await env.glob('**/*.rs')
@@ -1116,6 +1126,14 @@ async def test_memory_glob():
         assert sorted(matches) == ['src/main.py', 'src/utils.py']
 
 
+async def test_memory_glob_non_recursive():
+    env = MemoryEnvironment(files={'top.py': '# top', 'sub/nested.py': '# nested'})
+    async with env:
+        # Non-recursive pattern should only match in the target directory
+        matches = await env.glob('*.py')
+        assert matches == ['top.py']
+
+
 async def test_memory_glob_no_matches():
     env = MemoryEnvironment(files={'a.py': ''})
     async with env:
@@ -1478,12 +1496,26 @@ def test_build_glob_cmd():
     assert 'find' in cmd
     assert "'*.py'" in cmd
     assert "'.'" in cmd
+    assert '-maxdepth 1' in cmd
 
 
 @docker_skip
 def test_build_glob_cmd_with_path():
     cmd = _build_glob_cmd('*.py', path='src')
     assert "'src'" in cmd
+    assert '-maxdepth 1' in cmd
+
+
+@docker_skip
+def test_build_glob_cmd_nested_pattern():
+    cmd = _build_glob_cmd('src/*.py')
+    assert '-maxdepth 2' in cmd
+
+
+@docker_skip
+def test_build_glob_cmd_recursive_no_maxdepth():
+    cmd = _build_glob_cmd('**/*.py')
+    assert '-maxdepth' not in cmd
 
 
 @docker_skip
@@ -1939,9 +1971,6 @@ def mock_container() -> MockContainer:
 @pytest.fixture
 def mock_docker_sandbox(mock_container: MockContainer) -> Any:
     """Create a DockerEnvironment with a mock container."""
-    if not docker_installed:
-        pytest.skip('docker package not installed')
-
     sandbox = DockerEnvironment(image='python:3.12-slim')
     sandbox._container = mock_container  # type: ignore[assignment]
     sandbox._client = MagicMock()

@@ -87,10 +87,20 @@ def _filter_grep_count_output(text: str) -> str:
 
 
 def _build_glob_cmd(pattern: str, *, path: str = '.') -> str:
-    """Build a shell `find` command to match files by pattern."""
+    """Build a shell `find` command to match files by pattern.
+
+    When the pattern does not contain ``**``, ``-maxdepth`` is added so that
+    ``*.py`` only matches in the target directory (matching Local/Memory
+    behaviour), while ``**/*.py`` recurses without limit.
+    """
     path_pattern = f'{path}/{pattern}' if '/' in pattern else pattern
+    # Limit recursion depth for non-** patterns to match pathlib.glob semantics
+    if '**' in pattern:
+        depth_flag = ''
+    else:
+        depth_flag = f' -maxdepth {pattern.count("/") + 1}'
     return (
-        f'find {_shell_escape(path)}'
+        f'find {_shell_escape(path)}{depth_flag}'
         f' \\( -path {_shell_escape(path_pattern)} -o -name {_shell_escape(pattern)} \\)'
         f' 2>/dev/null | head -100'
     )
