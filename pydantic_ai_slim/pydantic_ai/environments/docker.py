@@ -26,12 +26,6 @@ from ._base import (
     ExecutionResult,
     FileInfo,
     apply_edit,
-    build_glob_cmd,
-    build_grep_cmd,
-    build_read_file_cmd,
-    filter_grep_count_output,
-    parse_glob_output,
-    shell_escape,
 )
 
 try:
@@ -43,6 +37,68 @@ except ImportError as _import_error:
         'The `docker` package is required for DockerEnvironment. '
         'Install it with: pip install pydantic-ai-slim[docker-environment]'
     ) from _import_error
+
+
+def _shell_escape(s: str) -> str:
+    """Escape a string for safe use in shell commands."""
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
+def _build_read_file_cmd(path: str, *, offset: int = 0, limit: int = 2000) -> str:
+    """Build a shell command that reads a file with line numbers."""
+    escaped = _shell_escape(path)
+    start = offset + 1
+    end = offset + limit
+    return (
+        f'awk \'NR>={start} && NR<={end} {{printf "%6d\\t%s\\n", NR, $0}}'
+        f' END {{if(NR>{end}) printf "... (%d more lines. Use offset={end} to continue reading.)\\n", NR-{end}}}\''
+        f' {escaped}'
+    )
+
+
+def _build_grep_cmd(
+    pattern: str,
+    *,
+    path: str | None = None,
+    glob_pattern: str | None = None,
+    output_mode: Literal['content', 'files_with_matches', 'count'] = 'content',
+) -> str:
+    """Build a shell `grep` command from structured arguments."""
+    parts = ['grep', '-rI']  # -I skips binary files
+    if output_mode == 'files_with_matches':
+        parts.append('-l')
+    elif output_mode == 'count':
+        parts.append('-c')
+    else:
+        parts.append('-n')
+    if glob_pattern:
+        parts.extend(['--include', _shell_escape(glob_pattern)])
+    parts.append(_shell_escape(pattern))
+    parts.append(_shell_escape(path or '.'))
+    return ' '.join(parts)
+
+
+def _filter_grep_count_output(text: str) -> str:
+    """Filter `grep -c` output to remove files with 0 matches."""
+    return '\n'.join(line for line in text.splitlines() if not line.endswith(':0'))
+
+
+def _build_glob_cmd(pattern: str, *, path: str = '.') -> str:
+    """Build a shell `find` command to match files by pattern."""
+    path_pattern = f'{path}/{pattern}' if '/' in pattern else pattern
+    return (
+        f'find {_shell_escape(path)}'
+        f' \\( -path {_shell_escape(path_pattern)} -o -name {_shell_escape(pattern)} \\)'
+        f' 2>/dev/null | head -100'
+    )
+
+
+def _parse_glob_output(text: str) -> list[str]:
+    """Parse output of a find/glob command into a list of paths."""
+    text = text.strip()
+    if not text:
+        return []
+    return [line for line in text.splitlines() if line]
 
 
 def _put_file(container: Container, path: str, data: bytes) -> None:
@@ -456,7 +512,7 @@ class DockerEnvironment(ExecutionEnvironment):
 
         def _exec() -> tuple[int, bytes]:
             if timeout is not None:
-                wrapped = f'timeout {math.ceil(timeout)} sh -c {shell_escape(command)}'
+                wrapped = f'timeout {math.ceil(timeout)} sh -c {_shell_escape(command)}'
             else:
                 wrapped = command
             exec_kwargs: dict[str, Any] = {'workdir': self._work_dir}
@@ -484,7 +540,7 @@ class DockerEnvironment(ExecutionEnvironment):
             return await anyio.to_thread.run_sync(self._read_file_bytes_sync, path)
 
         def _read() -> str | bytes:
-            cmd = build_read_file_cmd(path, offset=offset, limit=limit)
+            cmd = _build_read_file_cmd(path, offset=offset, limit=limit)
             exit_code, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             if exit_code != 0:
                 raise FileNotFoundError(f'File not found or not readable: {path}')
@@ -540,7 +596,7 @@ class DockerEnvironment(ExecutionEnvironment):
 
     async def ls(self, path: str = '.') -> list[FileInfo]:
         def _ls() -> list[FileInfo]:
-            cmd = f'ls -la {shell_escape(path)}'
+            cmd = f'ls -la {_shell_escape(path)}'
             exit_code, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             if exit_code != 0:
                 raise NotADirectoryError(f'Not a directory or not found: {path}')
@@ -567,9 +623,9 @@ class DockerEnvironment(ExecutionEnvironment):
 
     async def glob(self, pattern: str, *, path: str = '.') -> list[str]:
         def _glob() -> list[str]:
-            cmd = build_glob_cmd(pattern, path=path)
+            cmd = _build_glob_cmd(pattern, path=path)
             _, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
-            return parse_glob_output(output.decode('utf-8', errors='replace'))
+            return _parse_glob_output(output.decode('utf-8', errors='replace'))
 
         return await anyio.to_thread.run_sync(_glob)
 
@@ -582,11 +638,11 @@ class DockerEnvironment(ExecutionEnvironment):
         output_mode: Literal['content', 'files_with_matches', 'count'] = 'content',
     ) -> str:
         def _grep() -> str:
-            cmd = build_grep_cmd(pattern, path=path, glob_pattern=glob_pattern, output_mode=output_mode)
+            cmd = _build_grep_cmd(pattern, path=path, glob_pattern=glob_pattern, output_mode=output_mode)
             _, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             text = output.decode('utf-8', errors='replace').strip()
             if output_mode == 'count':
-                text = filter_grep_count_output(text)
+                text = _filter_grep_count_output(text)
             return text
 
         return await anyio.to_thread.run_sync(_grep)

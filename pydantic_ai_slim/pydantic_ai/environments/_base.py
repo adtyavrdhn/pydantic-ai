@@ -355,11 +355,6 @@ class ExecutionEnvironment(ABC):
 # --- Helper functions ---
 
 
-def shell_escape(s: str) -> str:
-    """Escape a string for safe use in shell commands."""
-    return "'" + s.replace("'", "'\\''") + "'"
-
-
 def format_lines(text: str, offset: int, limit: int) -> str:
     """Format text with line numbers and continuation hints.
 
@@ -437,72 +432,6 @@ def glob_match(path: str, pattern: str) -> bool:
             regex += re.escape(pattern[i])
             i += 1
     return bool(re.fullmatch(regex, path))
-
-
-# --- Shell command builders for Docker environments ---
-
-
-def build_read_file_cmd(path: str, *, offset: int = 0, limit: int = 2000) -> str:
-    """Build a shell command that reads a file with line numbers.
-
-    Uses `awk` for reliable line numbering that handles tabs correctly.
-    Includes a continuation hint when more lines remain, consistent
-    with the `format_lines` helper used by Local/Memory environments.
-    """
-    escaped = shell_escape(path)
-    start = offset + 1
-    end = offset + limit
-    return (
-        f'awk \'NR>={start} && NR<={end} {{printf "%6d\\t%s\\n", NR, $0}}'
-        f' END {{if(NR>{end}) printf "... (%d more lines. Use offset={end} to continue reading.)\\n", NR-{end}}}\''
-        f' {escaped}'
-    )
-
-
-def build_grep_cmd(
-    pattern: str,
-    *,
-    path: str | None = None,
-    glob_pattern: str | None = None,
-    output_mode: Literal['content', 'files_with_matches', 'count'] = 'content',
-) -> str:
-    """Build a shell `grep` command from structured arguments."""
-    parts = ['grep', '-rI']  # -I skips binary files
-    if output_mode == 'files_with_matches':
-        parts.append('-l')
-    elif output_mode == 'count':
-        parts.append('-c')
-    else:
-        parts.append('-n')
-    if glob_pattern:
-        parts.extend(['--include', shell_escape(glob_pattern)])
-    parts.append(shell_escape(pattern))
-    parts.append(shell_escape(path or '.'))
-    return ' '.join(parts)
-
-
-def filter_grep_count_output(text: str) -> str:
-    """Filter `grep -c` output to remove files with 0 matches."""
-    return '\n'.join(line for line in text.splitlines() if not line.endswith(':0'))
-
-
-def build_glob_cmd(pattern: str, *, path: str = '.') -> str:
-    """Build a shell `find` command to match files by pattern."""
-    # For -path, prepend the search path since find outputs full paths relative to the starting point
-    path_pattern = f'{path}/{pattern}' if '/' in pattern else pattern
-    return (
-        f'find {shell_escape(path)}'
-        f' \\( -path {shell_escape(path_pattern)} -o -name {shell_escape(pattern)} \\)'
-        f' 2>/dev/null | head -100'
-    )
-
-
-def parse_glob_output(text: str) -> list[str]:
-    """Parse output of a find/glob command into a list of paths."""
-    text = text.strip()
-    if not text:
-        return []
-    return [line for line in text.splitlines() if line]
 
 
 def apply_edit(text: str, old_string: str, new_string: str, path: str, *, replace_all: bool) -> tuple[str, int]:

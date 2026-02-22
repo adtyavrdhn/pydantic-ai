@@ -311,7 +311,8 @@ class LocalEnvironment(ExecutionEnvironment):
         search_dir = self._resolve_path(path or '.')
         compiled = re.compile(pattern)
 
-        if search_dir.is_file():
+        is_explicit_file = search_dir.is_file()
+        if is_explicit_file:
             files = [search_dir]
         elif glob_pattern:
             files = sorted(search_dir.rglob(glob_pattern))
@@ -322,8 +323,10 @@ class LocalEnvironment(ExecutionEnvironment):
         for file_path in files:
             if not file_path.is_file():
                 continue
-            # Skip hidden files/directories (e.g. .git/, .venv/)
-            if any(part.startswith('.') for part in file_path.relative_to(self._root_dir).parts):
+            # Skip hidden files/directories (e.g. .git/, .venv/) unless explicitly specified
+            if not is_explicit_file and any(
+                part.startswith('.') for part in file_path.relative_to(self._root_dir).parts
+            ):
                 continue
             try:
                 raw = file_path.read_bytes()

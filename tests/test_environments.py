@@ -25,14 +25,8 @@ from pydantic_ai.environments import (
 )
 from pydantic_ai.environments._base import (
     apply_edit,
-    build_glob_cmd,
-    build_grep_cmd,
-    build_read_file_cmd,
-    filter_grep_count_output,
     format_lines,
     glob_match,
-    parse_glob_output,
-    shell_escape,
 )
 from pydantic_ai.environments.local import LocalEnvironment, LocalEnvironmentProcess
 from pydantic_ai.environments.memory import MemoryEnvironment
@@ -46,7 +40,13 @@ try:
     from pydantic_ai.environments.docker import (
         DockerEnvironment,
         DockerEnvironmentProcess,
+        _build_glob_cmd,
+        _build_grep_cmd,
+        _build_read_file_cmd,
+        _filter_grep_count_output,
+        _parse_glob_output,
         _put_file,
+        _shell_escape,
     )
 except ImportError:  # pragma: lax no cover
     docker_installed = False
@@ -435,6 +435,15 @@ async def test_local_grep_skips_hidden_files(tmp_path: Path):
         assert 'visible.py' in result
         assert '.hidden' not in result
         assert '.dotfile' not in result
+
+
+async def test_local_grep_explicit_hidden_file(tmp_path: Path):
+    """Explicitly-specified hidden files should be searchable."""
+    async with LocalEnvironment(tmp_path) as env:
+        (tmp_path / '.env').write_text('SECRET=hunter2\n')
+
+        result = await env.grep('SECRET', path='.env')
+        assert 'SECRET=hunter2' in result
 
 
 # --- LocalEnvironment: create_process ---
@@ -1162,6 +1171,19 @@ async def test_memory_grep_skips_hidden():
         assert '.hidden' not in result
 
 
+async def test_memory_grep_explicit_hidden_file():
+    """Explicitly-specified hidden files should be searchable."""
+    env = MemoryEnvironment(
+        files={
+            '.env': 'SECRET=hunter2\n',
+            'visible.py': 'hello\n',
+        }
+    )
+    async with env:
+        result = await env.grep('SECRET', path='.env')
+        assert 'SECRET=hunter2' in result
+
+
 async def test_memory_grep_with_glob_pattern():
     env = MemoryEnvironment(
         files={
@@ -1307,11 +1329,12 @@ async def test_agent_with_execution_toolset():
 # --- _base.py helper functions ---
 
 
+@docker_skip
 def test_shell_escape():
-    assert shell_escape('hello') == "'hello'"
-    assert shell_escape("it's") == "'it'\\''s'"
-    assert shell_escape('') == "''"
-    assert shell_escape('a b c') == "'a b c'"
+    assert _shell_escape('hello') == "'hello'"
+    assert _shell_escape("it's") == "'it'\\''s'"
+    assert _shell_escape('') == "''"
+    assert _shell_escape('a b c') == "'a b c'"
 
 
 def test_format_lines_empty_file():
@@ -1359,101 +1382,116 @@ def test_glob_match_question_mark():
     assert glob_match('test.py', 't????.py') is False  # needs 4 chars between t and .py
 
 
+@docker_skip
 def test_build_read_file_cmd_default():
-    cmd = build_read_file_cmd('test.txt')
+    cmd = _build_read_file_cmd('test.txt')
     assert 'awk' in cmd
     assert "'test.txt'" in cmd
     assert 'NR>=1' in cmd
     assert 'NR<=2000' in cmd
 
 
+@docker_skip
 def test_build_read_file_cmd_with_offset():
-    cmd = build_read_file_cmd('file.py', offset=10, limit=50)
+    cmd = _build_read_file_cmd('file.py', offset=10, limit=50)
     assert 'NR>=11' in cmd
     assert 'NR<=60' in cmd
     assert "'file.py'" in cmd
 
 
+@docker_skip
 def test_build_read_file_cmd_continuation_hint():
-    """build_read_file_cmd includes a continuation hint in the awk END block."""
-    cmd = build_read_file_cmd('file.py', offset=0, limit=10)
+    """_build_read_file_cmd includes a continuation hint in the awk END block."""
+    cmd = _build_read_file_cmd('file.py', offset=0, limit=10)
     assert 'more lines' in cmd
     assert 'offset=10' in cmd
 
 
+@docker_skip
 def test_build_grep_cmd_content():
-    cmd = build_grep_cmd('pattern')
+    cmd = _build_grep_cmd('pattern')
     assert 'grep -rI' in cmd
     assert '-n' in cmd
     assert "'pattern'" in cmd
     assert "'.'" in cmd
 
 
+@docker_skip
 def test_build_grep_cmd_files_with_matches():
-    cmd = build_grep_cmd('pat', output_mode='files_with_matches')
+    cmd = _build_grep_cmd('pat', output_mode='files_with_matches')
     assert '-l' in cmd
     assert '-n' not in cmd
 
 
+@docker_skip
 def test_build_grep_cmd_count():
-    cmd = build_grep_cmd('pat', output_mode='count')
+    cmd = _build_grep_cmd('pat', output_mode='count')
     assert '-c' in cmd
 
 
+@docker_skip
 def test_build_grep_cmd_with_path():
-    cmd = build_grep_cmd('pat', path='src')
+    cmd = _build_grep_cmd('pat', path='src')
     assert "'src'" in cmd
 
 
+@docker_skip
 def test_build_grep_cmd_with_glob_pattern():
     """glob_pattern is shell-escaped to prevent injection."""
-    cmd = build_grep_cmd('pat', glob_pattern='*.py')
+    cmd = _build_grep_cmd('pat', glob_pattern='*.py')
     assert '--include' in cmd
     assert "'*.py'" in cmd
 
 
+@docker_skip
 def test_build_grep_cmd_glob_pattern_escaping():
     """Verify glob_pattern with special chars is properly shell-escaped."""
-    cmd = build_grep_cmd('pat', glob_pattern='*.py')
+    cmd = _build_grep_cmd('pat', glob_pattern='*.py')
     # The glob pattern should be shell-escaped (wrapped in single quotes)
     assert "--include '*.py'" in cmd
 
     # Even a malicious glob_pattern gets safely escaped
-    cmd2 = build_grep_cmd('pat', glob_pattern='$(evil)')
+    cmd2 = _build_grep_cmd('pat', glob_pattern='$(evil)')
     assert '$(evil)' not in cmd2.replace("'$(evil)'", '')  # Only appears inside quotes
 
 
+@docker_skip
 def test_build_glob_cmd():
-    cmd = build_glob_cmd('*.py')
+    cmd = _build_glob_cmd('*.py')
     assert 'find' in cmd
     assert "'*.py'" in cmd
     assert "'.'" in cmd
 
 
+@docker_skip
 def test_build_glob_cmd_with_path():
-    cmd = build_glob_cmd('*.py', path='src')
+    cmd = _build_glob_cmd('*.py', path='src')
     assert "'src'" in cmd
 
 
+@docker_skip
 def test_parse_glob_output_empty():
-    assert parse_glob_output('') == []
-    assert parse_glob_output('  ') == []
-    assert parse_glob_output('\n') == []
+    assert _parse_glob_output('') == []
+    assert _parse_glob_output('  ') == []
+    assert _parse_glob_output('\n') == []
 
 
+@docker_skip
 def test_parse_glob_output_multiline():
-    assert parse_glob_output('a.py\nb.py\nc.py\n') == ['a.py', 'b.py', 'c.py']
+    assert _parse_glob_output('a.py\nb.py\nc.py\n') == ['a.py', 'b.py', 'c.py']
 
 
+@docker_skip
 def test_filter_grep_count_output():
     text = 'a.py:3\nb.py:0\nc.py:1'
-    result = filter_grep_count_output(text)
+    result = _filter_grep_count_output(text)
     assert result == 'a.py:3\nc.py:1'
 
 
+@docker_skip
 def test_filter_grep_count_output_all_zero():
     text = 'a.py:0\nb.py:0'
-    result = filter_grep_count_output(text)
+    result = _filter_grep_count_output(text)
     assert result == ''
 
 

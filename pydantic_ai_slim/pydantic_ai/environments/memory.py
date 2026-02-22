@@ -249,8 +249,8 @@ class MemoryEnvironment(ExecutionEnvironment):
             if not is_exact_file and glob_pattern and not fnmatch.fnmatch(posixpath.basename(file_path), glob_pattern):
                 continue
 
-            # Skip hidden files
-            if any(part.startswith('.') for part in file_path.split('/')):
+            # Skip hidden files unless explicitly specified
+            if not is_exact_file and any(part.startswith('.') for part in file_path.split('/')):
                 continue
 
             content = self._files[file_path]
