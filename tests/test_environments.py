@@ -3114,7 +3114,7 @@ async def test_toolset_factory_filters_tools_by_capabilities():
             return frozenset({'ls'})
 
         async def ls(self, path: str = '.') -> list[FileInfo]:
-            return []
+            return []  # pragma: no cover
 
     toolset = ExecutionEnvironmentToolset(environment_factory=_LsOnlyEnv)
     # Before entering, all tools are registered (no env to check)
@@ -3264,7 +3264,7 @@ async def test_docker_read_file_unicode_error(mock_docker_sandbox: Any, mock_con
         cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
         if 'awk' in cmd_str and 'data.bin' in cmd_str:
             return 0, b'\x80\x81\x82\xff'
-        return original(cmd, **kwargs)
+        return original(cmd, **kwargs)  # pragma: no cover
 
     mock_container.exec_run = exec_with_binary  # type: ignore[assignment]
     result = await mock_docker_sandbox.read_file('data.bin')
@@ -3280,7 +3280,7 @@ async def test_docker_ls_size_value_error(mock_docker_sandbox: Any, mock_contain
         cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
         if 'ls -la' in cmd_str:
             return 0, b'total 0\n-rw-r--r-- 1 root root NaN Jan  1 00:00 file.txt'
-        return original(cmd, **kwargs)
+        return original(cmd, **kwargs)  # pragma: no cover
 
     mock_container.exec_run = exec_with_bad_size  # type: ignore[assignment]
     entries = await mock_docker_sandbox.ls()
@@ -3298,7 +3298,7 @@ async def test_docker_ls_short_line(mock_docker_sandbox: Any, mock_container: Mo
         cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
         if 'ls -la' in cmd_str:
             return 0, b'total 0\nshort line\n-rw-r--r-- 1 root root 42 Jan  1 00:00 real.txt'
-        return original(cmd, **kwargs)
+        return original(cmd, **kwargs)  # pragma: no cover
 
     mock_container.exec_run = exec_with_short_lines  # type: ignore[assignment]
     entries = await mock_docker_sandbox.ls()
