@@ -330,7 +330,7 @@ class LocalEnvironment(ExecutionEnvironment):
                 continue
             try:
                 raw = file_path.read_bytes()
-            except OSError:
+            except OSError:  # pragma: no cover
                 continue
 
             # Skip binary files (null byte in first 8KB)

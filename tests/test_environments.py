@@ -3108,3 +3108,247 @@ async def test_toolset_use_environment_filters_tools():
         # After exiting use_environment, all tools are back
         restored_tools = await toolset.get_tools(ctx)
         assert set(restored_tools.keys()) == set(all_tools.keys())
+
+
+# --- Coverage gap tests ---
+
+
+@docker_skip
+def test_docker_hardened_constructor():
+    """DockerEnvironment.hardened() returns a properly configured instance."""
+    env = DockerEnvironment.hardened(image='python:3.12-slim', memory_limit='1g')
+    assert env._network_disabled is True
+    assert env._read_only is True
+    assert env._cap_drop == ['ALL']
+    assert env._memory_limit == '1g'
+    assert env._user == 'nobody'
+    assert env._init is True
+
+
+@docker_skip
+def test_docker_setup_early_return():
+    """DockerEnvironment._setup returns early if container already exists."""
+    env = DockerEnvironment(image='python:3.12-slim')
+    env._container = MagicMock()
+    env._setup()  # should not create a new container
+    assert env._client is None  # docker.from_env() was never called
+
+
+@docker_skip
+async def test_docker_process_recv_stderr_no_buffer() -> None:
+    """DockerEnvironmentProcess.recv_stderr without buffered data (no timeout)."""
+    container = MockContainer()
+    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+    stderr_data = b'error output'
+    header = struct.pack('>BxxxI', 2, len(stderr_data))
+    mock_socket = MagicMock()
+    mock_socket.recv.side_effect = [header, stderr_data]
+    proc._socket = mock_socket
+
+    result = await proc.recv_stderr()
+    assert result == stderr_data
+
+
+@docker_skip
+async def test_docker_process_recv_stream_buffers_stdout() -> None:
+    """DockerEnvironmentProcess._recv_stream buffers stdout when stderr is wanted."""
+    container = MockContainer()
+    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+
+    # First frame is stdout (type 1), second is stderr (type 2)
+    stdout_data = b'stdout output'
+    stderr_data = b'stderr output'
+    stdout_header = struct.pack('>BxxxI', 1, len(stdout_data))
+    stderr_header = struct.pack('>BxxxI', 2, len(stderr_data))
+
+    mock_socket = MagicMock()
+    mock_socket.recv.side_effect = [stdout_header, stdout_data, stderr_header, stderr_data]
+    proc._socket = mock_socket
+
+    # Requesting stderr should buffer stdout and return stderr
+    result = await proc.recv_stderr()
+    assert result == stderr_data
+    assert proc._stdout_buffer == [stdout_data]
+
+
+@docker_skip
+async def test_docker_process_wait_no_timeout() -> None:
+    """DockerEnvironmentProcess.wait without timeout polls until returncode is set."""
+    container = MockContainer()
+    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+    proc._exec_id = 'exec-123'
+    # Mock exec_inspect to return "still running" first, then "exited"
+    call_count = 0
+
+    def mock_inspect(exec_id: str) -> dict[str, Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 1:
+            return {'Running': True, 'ExitCode': None}
+        return {'Running': False, 'ExitCode': 0}
+
+    container.client.api.exec_inspect = mock_inspect
+    result = await proc.wait()
+    assert result == 0
+    assert call_count >= 2
+
+
+@docker_skip
+async def test_docker_process_wait_with_timeout() -> None:
+    """DockerEnvironmentProcess.wait with timeout."""
+    container = MockContainer()
+    proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+    proc._returncode = 42
+    result = await proc.wait(timeout=5.0)
+    assert result == 42
+
+
+@docker_skip
+async def test_docker_read_file_unicode_error(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+    """DockerEnvironment.read_file falls back to raw bytes on UnicodeDecodeError."""
+    # Store a binary file (not an image extension) that will fail utf-8 decode
+    binary_data = b'\x80\x81\x82\xff'
+    mock_container._files['/workspace/data.bin'] = binary_data
+
+    # Make the awk command return non-utf8 data to trigger UnicodeDecodeError
+    original = mock_container.exec_run
+
+    def exec_with_binary(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+        cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
+        if 'awk' in cmd_str and 'data.bin' in cmd_str:
+            return 0, b'\x80\x81\x82\xff'
+        return original(cmd, **kwargs)
+
+    mock_container.exec_run = exec_with_binary  # type: ignore[assignment]
+    result = await mock_docker_sandbox.read_file('data.bin')
+    assert isinstance(result, bytes)
+
+
+@docker_skip
+async def test_docker_ls_size_value_error(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+    """DockerEnvironment.ls handles non-numeric size fields gracefully."""
+    original = mock_container.exec_run
+
+    def exec_with_bad_size(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+        cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
+        if 'ls -la' in cmd_str:
+            return 0, b'total 0\n-rw-r--r-- 1 root root NaN Jan  1 00:00 file.txt'
+        return original(cmd, **kwargs)
+
+    mock_container.exec_run = exec_with_bad_size  # type: ignore[assignment]
+    entries = await mock_docker_sandbox.ls()
+    assert len(entries) == 1
+    assert entries[0].name == 'file.txt'
+    assert entries[0].size is None
+
+
+@docker_skip
+async def test_docker_ls_short_line(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+    """DockerEnvironment.ls skips lines with fewer than 9 fields."""
+    original = mock_container.exec_run
+
+    def exec_with_short_lines(cmd: Any, **kwargs: Any) -> tuple[int, bytes]:
+        cmd_str = ' '.join(cmd) if isinstance(cmd, list) else cmd
+        if 'ls -la' in cmd_str:
+            return 0, b'total 0\nshort line\n-rw-r--r-- 1 root root 42 Jan  1 00:00 real.txt'
+        return original(cmd, **kwargs)
+
+    mock_container.exec_run = exec_with_short_lines  # type: ignore[assignment]
+    entries = await mock_docker_sandbox.ls()
+    assert len(entries) == 1
+    assert entries[0].name == 'real.txt'
+
+
+@docker_skip
+async def test_docker_is_alive_exception(mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
+    """DockerEnvironment.is_alive returns False when reload raises."""
+    mock_container.reload = MagicMock(side_effect=Exception('connection error'))
+    result = await mock_docker_sandbox.is_alive()
+    assert result is False
+
+
+@docker_skip
+async def test_docker_is_alive_running(mock_docker_sandbox: Any) -> None:
+    """DockerEnvironment.is_alive returns True when running."""
+    result = await mock_docker_sandbox.is_alive()
+    assert result is True
+
+
+async def test_local_recv_no_timeout(tmp_path: Path):
+    """LocalEnvironmentProcess.recv without timeout returns data."""
+    env = LocalEnvironment(tmp_path)
+    proc = await env.create_process('echo hello')
+    async with proc:
+        data = await proc.recv()  # no timeout
+        assert b'hello' in data
+
+
+async def test_local_recv_end_of_stream(tmp_path: Path):
+    """LocalEnvironmentProcess.recv returns empty bytes at EndOfStream."""
+    env = LocalEnvironment(tmp_path)
+    proc = await env.create_process('true')
+    async with proc:
+        await proc.wait(timeout=5)
+        # After process exits, reading should return empty
+        data = await proc.recv()
+        assert data == b''
+
+
+async def test_local_read_file_binary_non_image(tmp_path: Path):
+    """LocalEnvironment.read_file returns raw bytes for non-image binary files."""
+    async with LocalEnvironment(tmp_path) as env:
+        binary_path = tmp_path / 'data.bin'
+        binary_path.write_bytes(b'\x80\x81\x82\xff')
+        result = await env.read_file('data.bin')
+        assert isinstance(result, bytes)
+        assert result == b'\x80\x81\x82\xff'
+
+
+async def test_local_grep_truncation(tmp_path: Path):
+    """LocalEnvironment.grep truncates at 1000+ matches."""
+    async with LocalEnvironment(tmp_path) as env:
+        # Create a file with 1002 matching lines
+        lines = '\n'.join(f'match_{i}' for i in range(1002))
+        await env.write_file('big.txt', lines)
+        result = await env.grep('match_')
+        assert '[... truncated at 1000 matches]' in result
+
+
+async def test_memory_ls_duplicate_entry():
+    """MemoryEnvironment.ls deduplicates entries at the same directory level."""
+    # 'sub/a.txt' and 'sub/b.txt' both create a 'sub' directory entry
+    env = MemoryEnvironment(files={'sub/a.txt': 'a', 'sub/b.txt': 'b'})
+    async with env:
+        entries = await env.ls()
+        names = [e.name for e in entries]
+        assert names.count('sub') == 1
+
+
+async def test_memory_grep_truncation():
+    """MemoryEnvironment.grep truncates at 1000+ matches."""
+    lines = '\n'.join(f'match_{i}' for i in range(1002))
+    env = MemoryEnvironment(files={'big.txt': lines})
+    async with env:
+        result = await env.grep('match_')
+        assert '[... truncated at 1000 matches]' in result
+
+
+async def test_toolset_factory_ls_only_calls_ls():
+    """Test that _LsOnlyEnv.ls is actually callable (covers line 3071)."""
+
+    class _LsOnlyEnv(BaseEnv):
+        @property
+        def capabilities(self) -> frozenset[EnvToolName]:
+            return frozenset({'ls'})
+
+        async def ls(self, path: str = '.') -> list[FileInfo]:
+            return [FileInfo(name='test.txt', path='test.txt', is_dir=False, size=10)]
+
+    toolset = ExecutionEnvironmentToolset(environment_factory=_LsOnlyEnv)
+    ctx = build_run_context()
+
+    async with toolset:
+        tools = await toolset.get_tools(ctx)
+        result = await toolset.call_tool('ls', {}, ctx, tools['ls'])
+        assert 'test.txt' in str(result)

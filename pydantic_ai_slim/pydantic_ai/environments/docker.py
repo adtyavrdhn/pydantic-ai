@@ -410,7 +410,7 @@ class DockerEnvironment(ExecutionEnvironment):
             }
         )
 
-    async def __aenter__(self) -> Self:
+    async def __aenter__(self) -> Self:  # pragma: lax no cover
         await anyio.to_thread.run_sync(self._setup)
         return self
 
@@ -457,7 +457,7 @@ class DockerEnvironment(ExecutionEnvironment):
         # Ensure work_dir exists
         self._container.exec_run(['mkdir', '-p', self._work_dir])
 
-    async def __aexit__(self, *_args: Any) -> None:
+    async def __aexit__(self, *_args: Any) -> None:  # pragma: lax no cover
         if self._container is not None:  # pragma: no branch
             await anyio.to_thread.run_sync(self._teardown)
 
@@ -558,10 +558,10 @@ class DockerEnvironment(ExecutionEnvironment):
         tar_bytes = b''.join(bits)
         with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
             members = tar.getmembers()
-            if not members:
+            if not members:  # pragma: no cover
                 raise FileNotFoundError(f'File not found: {path}')
             extracted = tar.extractfile(members[0])
-            if extracted is None:
+            if extracted is None:  # pragma: no cover
                 raise FileNotFoundError(f'Cannot read file: {path}')
             return extracted.read()
 
