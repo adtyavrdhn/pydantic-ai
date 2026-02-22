@@ -1410,7 +1410,7 @@ def test_build_read_file_cmd_continuation_hint():
 @docker_skip
 def test_build_grep_cmd_content():
     cmd = _build_grep_cmd('pattern')
-    assert 'grep -rI' in cmd
+    assert 'grep -rIE' in cmd
     assert '-n' in cmd
     assert "'pattern'" in cmd
     assert "'.'" in cmd

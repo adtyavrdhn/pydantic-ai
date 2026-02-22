@@ -64,7 +64,7 @@ def _build_grep_cmd(
     output_mode: Literal['content', 'files_with_matches', 'count'] = 'content',
 ) -> str:
     """Build a shell `grep` command from structured arguments."""
-    parts = ['grep', '-rI']  # -I skips binary files
+    parts = ['grep', '-rIE']  # -I skips binary files, -E uses extended regex
     if output_mode == 'files_with_matches':
         parts.append('-l')
     elif output_mode == 'count':
