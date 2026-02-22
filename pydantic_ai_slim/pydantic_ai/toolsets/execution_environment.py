@@ -264,7 +264,7 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
             try:
                 count = await self.required_environment.replace_str(path, old, new, replace_all=replace_all)
                 return f'Replaced {count} occurrence{"s" if count != 1 else ""} in {path}.'
-            except (FileNotFoundError, ValueError) as e:
+            except (FileNotFoundError, PermissionError, ValueError, OSError) as e:
                 raise ModelRetry(str(e))
 
         self.tool(requires_approval=self._require_write_approval)(edit_file)

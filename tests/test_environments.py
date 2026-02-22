@@ -602,6 +602,23 @@ async def test_toolset_edit_retry_on_error(tmp_path: Path):
             )
 
 
+async def test_toolset_edit_retry_on_permission_error(tmp_path: Path):
+    """edit_file raises ModelRetry on PermissionError (e.g. path traversal)."""
+    env = LocalEnvironment(tmp_path)
+    toolset = ExecutionEnvironmentToolset(env, max_retries=0)
+    ctx = build_run_context(None)
+    manager = await ToolManager[None](toolset).for_run_step(ctx)
+
+    async with env:
+        with pytest.raises(UnexpectedModelBehavior, match='exceeded max retries count of 0'):
+            await manager.handle_call(
+                ToolCallPart(
+                    tool_name='edit_file',
+                    args={'path': '../../etc/passwd', 'old': 'root', 'new': 'hacked'},
+                )
+            )
+
+
 async def test_toolset_glob_tool(tmp_path: Path):
     env = LocalEnvironment(tmp_path)
     toolset = ExecutionEnvironmentToolset(env)
