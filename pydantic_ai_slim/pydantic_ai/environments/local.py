@@ -18,7 +18,7 @@ from typing_extensions import Self
 from ._base import (
     IMAGE_EXTENSIONS,
     MAX_OUTPUT_CHARS,
-    EnvCapability,
+    EnvToolName,
     ExecutionEnvironment,
     ExecutionProcess,
     ExecutionResult,
@@ -135,8 +135,8 @@ class LocalEnvironment(ExecutionEnvironment):
         self._inherit_env = inherit_env
 
     @property
-    def capabilities(self) -> frozenset[EnvCapability]:
-        return frozenset({'ls', 'shell', 'read_file', 'write_file', 'edit_file:replace_str', 'glob', 'grep'})
+    def capabilities(self) -> frozenset[EnvToolName]:
+        return frozenset({'ls', 'shell', 'read_file', 'write_file', 'edit_file', 'glob', 'grep'})
 
     async def __aenter__(self) -> Self:
         self._root_dir.mkdir(parents=True, exist_ok=True)

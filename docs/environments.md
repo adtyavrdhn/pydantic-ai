@@ -315,13 +315,12 @@ You can implement [`ExecutionEnvironment`][pydantic_ai.environments.ExecutionEnv
 ```python {title="environments_custom.py" test="skip" lint="skip"}
 from typing import Literal
 
-from pydantic_ai.environments import ExecutionEnvironment, ExecutionProcess, ExecutionResult, FileInfo
-from pydantic_ai.environments._base import EnvCapability
+from pydantic_ai.environments import EnvToolName, ExecutionEnvironment, ExecutionProcess, ExecutionResult, FileInfo
 
 class MyCloudEnvironment(ExecutionEnvironment):
     @property
-    def capabilities(self) -> frozenset[EnvCapability]:
-        return frozenset({'shell', 'read_file', 'write_file', 'edit_file:replace_str', 'ls', 'glob', 'grep'})
+    def capabilities(self) -> frozenset[EnvToolName]:
+        return frozenset({'shell', 'read_file', 'write_file', 'edit_file', 'ls', 'glob', 'grep'})
 
     async def shell(
         self, command: str, *, timeout: float | None = 120, env: dict[str, str] | None = None

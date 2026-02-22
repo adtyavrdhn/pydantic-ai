@@ -15,22 +15,7 @@ from typing_extensions import Self
 
 # --- Type aliases ---
 
-EnvCapability = Literal[
-    'ls',
-    'shell',
-    'read_file',
-    'write_file',
-    'edit_file:replace_str',
-    'edit_file:apply_patch',
-    'glob',
-    'grep',
-]
-"""Identifier for an environment method.
-
-Used in `capabilities` to declare which methods an environment implements.
-"""
-
-ToolName = Literal[
+EnvToolName = Literal[
     'ls',
     'shell',
     'read_file',
@@ -39,11 +24,10 @@ ToolName = Literal[
     'glob',
     'grep',
 ]
-"""Tool name exposed to the model by `ExecutionEnvironmentToolset`.
+"""Tool name for an environment capability.
 
-Most match `EnvCapability` 1:1, except `edit_file` which maps to either
-`edit_file:replace_str` or `edit_file:apply_patch` depending on environment support.
-Used for `include`/`exclude` filtering on the toolset.
+Used in `capabilities` to declare which methods an environment implements,
+and by `ExecutionEnvironmentToolset` for `include`/`exclude` filtering.
 """
 
 
@@ -195,11 +179,11 @@ class ExecutionEnvironment(ABC):
     methods that match their declared capabilities.
     """
 
-    # --- EnvCapability introspection ---
+    # --- Capability introspection ---
 
     @property
     @abstractmethod
-    def capabilities(self) -> frozenset[EnvCapability]:
+    def capabilities(self) -> frozenset[EnvToolName]:
         """Capabilities this environment supports (high-level).
 
         Used by toolsets to decide which tools to register. Only methods
@@ -302,18 +286,6 @@ class ExecutionEnvironment(ABC):
                 when `replace_all` is False.
         """
         raise NotImplementedError(f'{type(self).__name__} does not support replace_str.')
-
-    async def apply_patch(self, path: str, patch: str) -> str:
-        """Apply a unified diff patch to a file.
-
-        Args:
-            path: The file path within the environment.
-            patch: The unified diff patch content.
-
-        Returns:
-            The resulting file content after applying the patch.
-        """
-        raise NotImplementedError(f'{type(self).__name__} does not support apply_patch.')
 
     async def glob(self, pattern: str, *, path: str = '.') -> list[str]:
         """Find files matching a glob pattern.

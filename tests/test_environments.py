@@ -8,15 +8,21 @@ import struct
 import tarfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch as mock_patch
 
 import pytest
 from inline_snapshot import snapshot
 
-from pydantic_ai import ToolCallPart
+from pydantic_ai import Agent, BinaryContent, ToolCallPart
 from pydantic_ai._run_context import RunContext
 from pydantic_ai._tool_manager import ToolManager
-from pydantic_ai.environments import ExecutionEnvironmentToolset, ExecutionResult, FileInfo
+from pydantic_ai.environments import (
+    EnvToolName,
+    ExecutionEnvironment as BaseEnv,
+    ExecutionEnvironmentToolset,
+    ExecutionResult,
+    FileInfo,
+)
 from pydantic_ai.environments._base import (
     apply_edit,
     build_glob_cmd,
@@ -28,7 +34,7 @@ from pydantic_ai.environments._base import (
     parse_glob_output,
     shell_escape,
 )
-from pydantic_ai.environments.local import LocalEnvironment
+from pydantic_ai.environments.local import LocalEnvironment, LocalEnvironmentProcess
 from pydantic_ai.environments.memory import MemoryEnvironment
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.test import TestModel
@@ -1280,7 +1286,6 @@ def test_docker_sandbox_instantiation():
 
 async def test_agent_with_execution_toolset():
     """Agent with ExecutionEnvironmentToolset runs end-to-end using TestModel and MemoryEnvironment."""
-    from pydantic_ai import Agent
 
     env = MemoryEnvironment(
         files={'data.txt': 'hello world\n'},
@@ -1653,7 +1658,6 @@ async def test_toolset_image_too_large(tmp_path: Path):
 
 async def test_toolset_image_read(tmp_path: Path):
     """read_file on an image returns BinaryContent."""
-    from pydantic_ai.messages import BinaryContent
 
     env = LocalEnvironment(tmp_path)
     toolset = ExecutionEnvironmentToolset(env)
@@ -2192,8 +2196,6 @@ async def test_toolset_lifecycle_error(tmp_path: Path):
 
 async def test_local_process_stdin_not_available():
     """LocalEnvironmentProcess.send raises when stdin is None."""
-    from pydantic_ai.environments.local import LocalEnvironmentProcess
-
     mock_proc = MagicMock()
     mock_proc.stdin = None
     proc = LocalEnvironmentProcess(mock_proc)
@@ -2203,8 +2205,6 @@ async def test_local_process_stdin_not_available():
 
 async def test_local_process_stdout_not_available():
     """LocalEnvironmentProcess.recv raises when stdout is None."""
-    from pydantic_ai.environments.local import LocalEnvironmentProcess
-
     mock_proc = MagicMock()
     mock_proc.stdout = None
     proc = LocalEnvironmentProcess(mock_proc)
@@ -2214,8 +2214,6 @@ async def test_local_process_stdout_not_available():
 
 async def test_local_process_stderr_not_available():
     """LocalEnvironmentProcess.recv_stderr raises when stderr is None."""
-    from pydantic_ai.environments.local import LocalEnvironmentProcess
-
     mock_proc = MagicMock()
     mock_proc.stderr = None
     proc = LocalEnvironmentProcess(mock_proc)
@@ -2427,8 +2425,6 @@ async def test_docker_execute_timeout_exit_code(mock_docker_sandbox: Any, mock_c
 @docker_skip
 async def test_docker_setup_teardown() -> None:
     """DockerEnvironment._setup and _teardown with mocked Docker client."""
-    from unittest.mock import patch as mock_patch
-
     sandbox = DockerEnvironment(image='python:3.12-slim')
 
     mock_client = MagicMock()
@@ -2465,8 +2461,6 @@ async def test_docker_teardown_cleanup_errors() -> None:
 @docker_skip
 async def test_docker_setup_with_all_options() -> None:
     """DockerEnvironment._setup passes all container options."""
-    from unittest.mock import patch as mock_patch
-
     sandbox = DockerEnvironment(
         image='python:3.12-slim',
         env_vars={'KEY': 'val'},
@@ -2809,70 +2803,15 @@ async def test_memory_read_file_that_is_also_directory_prefix():
 # --- ExecutionEnvironmentToolset: capability and edit strategy resolution ---
 
 
-def test_resolve_edit_tool_explicit_strategy():
-    """Explicit edit_strategy is used when the environment supports it."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
-
-    class _BothEditEnv(BaseEnv):
-        @property
-        def capabilities(self) -> frozenset[EnvCapability]:
-            return frozenset({'edit_file:replace_str', 'edit_file:apply_patch'})
-
-    env = _BothEditEnv()
-    toolset = ExecutionEnvironmentToolset(env, edit_strategy='edit_file:apply_patch')
-    assert toolset._resolve_edit_tool(env) == 'edit_file:apply_patch'
-
-
-def test_resolve_edit_tool_explicit_strategy_unsupported_falls_back():
-    """Explicit edit_strategy falls back to auto-detection when the env doesn't support it."""
-    env = MemoryEnvironment()  # only has edit_file:replace_str
-    toolset = ExecutionEnvironmentToolset(env, edit_strategy='edit_file:apply_patch')
-    assert toolset._resolve_edit_tool(env) == 'edit_file:replace_str'
-
-
-def test_resolve_edit_tool_auto_replace_str():
-    """Auto-detection picks replace_str when supported by the environment."""
-    env = MemoryEnvironment()
-    toolset = ExecutionEnvironmentToolset(env)
-    assert toolset._resolve_edit_tool(env) == 'edit_file:replace_str'
-
-
-def test_resolve_edit_tool_apply_patch_fallback():
-    """When env has apply_patch but not replace_str, resolves to apply_patch."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
-
-    class _ApplyPatchEnv(BaseEnv):
-        @property
-        def capabilities(self) -> frozenset[EnvCapability]:
-            return frozenset({'edit_file:apply_patch'})
-
-    toolset = ExecutionEnvironmentToolset(_ApplyPatchEnv())
-    assert toolset._resolve_edit_tool(_ApplyPatchEnv()) == 'edit_file:apply_patch'
-
-
-def test_resolve_edit_tool_neither():
-    """When env has neither replace_str nor apply_patch, returns None."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
-
-    class _NoEditEnv(BaseEnv):
-        @property
-        def capabilities(self) -> frozenset[EnvCapability]:
-            return frozenset({'ls'})
-
-    toolset = ExecutionEnvironmentToolset(_NoEditEnv())
-    assert toolset._resolve_edit_tool(_NoEditEnv()) is None
-
-
 # --- ExecutionEnvironmentToolset: ls formatting through toolset ---
 
 
 async def test_toolset_ls_error_handling():
     """Toolset ls returns error string when environment raises."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
 
     class _ErrorLsEnv(BaseEnv):
         @property
-        def capabilities(self) -> frozenset[EnvCapability]:
+        def capabilities(self) -> frozenset[EnvToolName]:
             return frozenset({'ls'})
 
         async def ls(self, path: str = '.') -> list[FileInfo]:
@@ -2899,11 +2838,10 @@ async def test_toolset_ls_formats_dirs():
 
 async def test_toolset_ls_formats_files_without_size():
     """Toolset ls formats file entries without size (just the name)."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
 
     class _NoSizeEnv(BaseEnv):
         @property
-        def capabilities(self) -> frozenset[EnvCapability]:
+        def capabilities(self) -> frozenset[EnvToolName]:
             return frozenset({'ls'})
 
         async def ls(self, path: str = '.') -> list[FileInfo]:
@@ -2919,11 +2857,10 @@ async def test_toolset_ls_formats_files_without_size():
 
 async def test_toolset_ls_empty_directory():
     """Toolset ls returns 'Empty directory.' for empty listings."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
 
     class _EmptyLsEnv(BaseEnv):
         @property
-        def capabilities(self) -> frozenset[EnvCapability]:
+        def capabilities(self) -> frozenset[EnvToolName]:
             return frozenset({'ls'})
 
         async def ls(self, path: str = '.') -> list[FileInfo]:
@@ -3086,11 +3023,10 @@ async def test_memory_read_image_stored_as_string():
 
 async def test_toolset_factory_filters_tools_by_capabilities():
     """When using environment_factory, get_tools() only returns tools supported by the runtime environment."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
 
     class _LsOnlyEnv(BaseEnv):
         @property
-        def capabilities(self) -> frozenset[EnvCapability]:
+        def capabilities(self) -> frozenset[EnvToolName]:
             return frozenset({'ls'})
 
         async def ls(self, path: str = '.') -> list[FileInfo]:
@@ -3109,11 +3045,10 @@ async def test_toolset_factory_filters_tools_by_capabilities():
 
 async def test_toolset_use_environment_filters_tools():
     """use_environment() with a limited env filters tools from get_tools()."""
-    from pydantic_ai.environments._base import EnvCapability, ExecutionEnvironment as BaseEnv
 
     class _LsOnlyEnv(BaseEnv):
         @property
-        def capabilities(self) -> frozenset[EnvCapability]:
+        def capabilities(self) -> frozenset[EnvToolName]:
             return frozenset({'ls'})
 
     # Full-capability shared env registers all tools

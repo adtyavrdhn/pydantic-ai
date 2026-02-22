@@ -15,8 +15,8 @@ from typing_extensions import Self
 from ..environments._base import (
     IMAGE_EXTENSIONS,
     IMAGE_MEDIA_TYPES,
+    EnvToolName,
     ExecutionEnvironment,
-    ToolName,
 )
 from ..exceptions import ModelRetry
 from ..messages import BinaryContent
@@ -62,9 +62,8 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
         shared_environment: ExecutionEnvironment | None = None,
         *,
         environment_factory: Callable[[], ExecutionEnvironment] | None = None,
-        include: Sequence[ToolName] | None = None,
-        exclude: Sequence[ToolName] | None = None,
-        edit_strategy: Literal['edit_file:replace_str', 'edit_file:apply_patch'] | None = None,
+        include: Sequence[EnvToolName] | None = None,
+        exclude: Sequence[EnvToolName] | None = None,
         require_shell_approval: bool = False,
         require_write_approval: bool = False,
         image_support: bool = True,
@@ -87,8 +86,6 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
                 specific tools.
             exclude: Tool names to exclude. `None` defaults to no exclusions.
                 Pass an explicit sequence to exclude specific tools.
-            edit_strategy: Which edit strategy to use. `None` auto-selects
-                `'edit_file:replace_str'` if supported by the environment.
             require_shell_approval: Whether the `shell` tool requires human-in-the-loop
                 approval before execution. Recommended for `LocalEnvironment` where
                 commands run directly on the host.
@@ -112,9 +109,8 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
         self._per_run_state: ContextVar[tuple[AsyncExitStack, Token[ExecutionEnvironment | None]] | None] = ContextVar(
             f'_per_run_state_{id or "environment"}', default=None
         )
-        self._include: frozenset[ToolName] | None = frozenset(include) if include is not None else None
-        self._exclude: frozenset[ToolName] = frozenset(exclude) if exclude else frozenset()
-        self._edit_strategy: Literal['edit_file:replace_str', 'edit_file:apply_patch'] | None = edit_strategy
+        self._include: frozenset[EnvToolName] | None = frozenset(include) if include is not None else None
+        self._exclude: frozenset[EnvToolName] = frozenset(exclude) if exclude else frozenset()
         self._image_support = image_support
         self._max_image_bytes = max_image_bytes
         self._require_shell_approval = require_shell_approval
@@ -129,41 +125,13 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
 
     def _resolve_tool_names(self, env: ExecutionEnvironment) -> frozenset[str]:
         """Determine which tool names to expose, based on the environment's capabilities and include/exclude."""
-        # Map env capabilities → tool names (most 1:1, but edit_file:* → edit_file)
-        tool_names: set[str] = set()
-        for cap in env.capabilities:
-            if cap.startswith('edit_file:'):
-                continue  # handled below
-            tool_names.add(cap)
+        tool_names: set[str] = set(env.capabilities)
 
-        # Add edit_file if the resolved strategy's capability is available
-        if self._resolve_edit_tool(env) is not None:
-            tool_names.add('edit_file')
-
-        # Apply include/exclude at the tool-name level
         if self._include is not None:
             tool_names &= self._include
         tool_names -= self._exclude
 
         return frozenset(tool_names)
-
-    def _resolve_edit_tool(
-        self, env: ExecutionEnvironment
-    ) -> Literal['edit_file:replace_str', 'edit_file:apply_patch'] | None:
-        """Determine which edit strategy to use.
-
-        If ``edit_strategy`` was explicitly set and the environment supports it,
-        that strategy is used. Otherwise falls back to auto-detection
-        (preferring ``replace_str`` over ``apply_patch``).
-        """
-        env_caps = env.capabilities
-        if self._edit_strategy is not None and self._edit_strategy in env_caps:
-            return self._edit_strategy
-        if 'edit_file:replace_str' in env_caps:
-            return 'edit_file:replace_str'
-        if 'edit_file:apply_patch' in env_caps:
-            return 'edit_file:apply_patch'
-        return None
 
     def _register_tools(self) -> None:
         """Register all tools unconditionally.

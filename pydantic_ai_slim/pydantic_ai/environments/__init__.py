@@ -16,9 +16,10 @@ Implementations:
 
 from pydantic_ai.toolsets.execution_environment import ExecutionEnvironmentToolset
 
-from ._base import ExecutionEnvironment, ExecutionProcess, ExecutionResult, FileInfo
+from ._base import EnvToolName, ExecutionEnvironment, ExecutionProcess, ExecutionResult, FileInfo
 
 __all__ = (
+    'EnvToolName',
     'ExecutionResult',
     'ExecutionEnvironment',
     'ExecutionEnvironmentToolset',

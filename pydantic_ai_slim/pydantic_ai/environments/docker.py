@@ -20,7 +20,7 @@ from typing_extensions import Self
 from ._base import (
     IMAGE_EXTENSIONS,
     MAX_OUTPUT_CHARS,
-    EnvCapability,
+    EnvToolName,
     ExecutionEnvironment,
     ExecutionProcess,
     ExecutionResult,
@@ -341,14 +341,14 @@ class DockerEnvironment(ExecutionEnvironment):
         )
 
     @property
-    def capabilities(self) -> frozenset[EnvCapability]:  # pragma: lax no cover
+    def capabilities(self) -> frozenset[EnvToolName]:  # pragma: lax no cover
         return frozenset(
             {
                 'ls',
                 'shell',
                 'read_file',
                 'write_file',
-                'edit_file:replace_str',
+                'edit_file',
                 'glob',
                 'grep',
             }

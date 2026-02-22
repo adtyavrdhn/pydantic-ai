@@ -24,7 +24,7 @@ from ._base import (
 )
 
 if TYPE_CHECKING:
-    from ._base import EnvCapability
+    from ._base import EnvToolName
 
 
 class MemoryEnvironment(ExecutionEnvironment):
@@ -70,8 +70,8 @@ class MemoryEnvironment(ExecutionEnvironment):
         self._command_handler = command_handler
 
     @property
-    def capabilities(self) -> frozenset[EnvCapability]:
-        caps: set[EnvCapability] = {'ls', 'read_file', 'write_file', 'edit_file:replace_str', 'glob', 'grep'}
+    def capabilities(self) -> frozenset[EnvToolName]:
+        caps: set[EnvToolName] = {'ls', 'read_file', 'write_file', 'edit_file', 'glob', 'grep'}
         if self._command_handler is not None:
             caps.add('shell')
         return frozenset(caps)
