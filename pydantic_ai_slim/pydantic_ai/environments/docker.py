@@ -663,6 +663,13 @@ class DockerEnvironment(ExecutionEnvironment):
         glob_pattern: str | None = None,
         output_mode: Literal['content', 'files_with_matches', 'count'] = 'content',
     ) -> str:
+        r"""Search file contents using a regex pattern.
+
+        Patterns use POSIX Extended Regular Expression (ERE) syntax, as interpreted by `grep -E`.
+        Supported: `|`, `+`, `?`, `()`, `{}`, character classes like `[[:digit:]]`.
+        Not available: lookaheads/lookbehinds, `\d`, `\w`, `\b`, non-greedy quantifiers (`*?`, `+?`).
+        """
+
         def _grep() -> str:
             cmd = _build_grep_cmd(pattern, path=path, glob_pattern=glob_pattern, output_mode=output_mode)
             _, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)

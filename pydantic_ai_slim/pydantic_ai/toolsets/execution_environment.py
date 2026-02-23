@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 import posixpath
 import re
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import AsyncExitStack, contextmanager
 from contextvars import ContextVar, Token
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
 import anyio
@@ -25,6 +27,12 @@ from ..toolsets.function import FunctionToolset
 if TYPE_CHECKING:
     from .._run_context import AgentDepsT, RunContext
     from ..toolsets.abstract import ToolsetTool
+
+
+_TOOL_TO_ENV_METHOD: dict[str, str] = {
+    'edit_file': 'replace_str',
+}
+"""Map tool names to environment method names where they differ."""
 
 
 class ExecutionEnvironmentToolset(FunctionToolset[Any]):
@@ -327,8 +335,24 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
 
     async def get_tools(self, ctx: RunContext[AgentDepsT]) -> dict[str, ToolsetTool[AgentDepsT]]:
         all_tools = await super().get_tools(ctx)
-        tool_names = self._resolve_tool_names(self.required_environment)
-        return {name: tool for name, tool in all_tools.items() if name in tool_names}
+        env = self.required_environment
+        tool_names = self._resolve_tool_names(env)
+        filtered = {name: tool for name, tool in all_tools.items() if name in tool_names}
+
+        # Override tool descriptions from environment method docstrings.
+        # Each environment subclass can document its tool methods with LLM-facing
+        # docstrings (e.g. explaining regex flavor for grep); if present, these
+        # replace the generic default description.
+        env_type = type(env)
+        for tool_name, tool in filtered.items():
+            method_name = _TOOL_TO_ENV_METHOD.get(tool_name, tool_name)
+            env_method = getattr(env_type, method_name, None)
+            base_method = getattr(ExecutionEnvironment, method_name, None)
+            if env_method is not None and env_method is not base_method and env_method.__doc__:
+                desc = inspect.cleandoc(env_method.__doc__)
+                filtered[tool_name] = replace(tool, tool_def=replace(tool.tool_def, description=desc))
+
+        return filtered
 
     @property
     def tool_name_conflict_hint(self) -> str:

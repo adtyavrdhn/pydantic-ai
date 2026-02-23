@@ -308,6 +308,7 @@ class LocalEnvironment(ExecutionEnvironment):
         glob_pattern: str | None = None,
         output_mode: Literal['content', 'files_with_matches', 'count'] = 'content',
     ) -> str:
+        """Search file contents using a regex pattern (Python `re` module syntax)."""
         search_dir = self._resolve_path(path or '.')
         compiled = re.compile(pattern)
 
