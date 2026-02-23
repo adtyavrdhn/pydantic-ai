@@ -9,7 +9,7 @@ from __future__ import annotations
 import fnmatch
 import posixpath
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Literal
 
 from ._base import (
@@ -75,6 +75,16 @@ class MemoryEnvironment(ExecutionEnvironment):
         if self._command_handler is not None:
             caps.add('shell')
         return frozenset(caps)
+
+    @property
+    def files(self) -> Mapping[str, str | bytes]:
+        """Read-only view of the in-memory file system.
+
+        Keys are normalized file paths, values are file contents.
+        Useful for test assertions against raw file content without the
+        line-number formatting that [`read_file()`][pydantic_ai.environments.memory.MemoryEnvironment.read_file] adds.
+        """
+        return self._files
 
     @staticmethod
     def _normalize(path: str) -> str:

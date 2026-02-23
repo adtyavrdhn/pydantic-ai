@@ -3,6 +3,7 @@
 ::: pydantic_ai.environments
     options:
         members:
+        - EnvToolName
         - ExecutionEnvironment
         - ExecutionEnvironmentToolset
         - ExecutionProcess

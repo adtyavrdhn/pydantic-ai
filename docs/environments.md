@@ -6,7 +6,7 @@ This is the foundation for building coding agents, data analysis bots, and other
 
 ## Quick Start
 
-```python {title="environments_quickstart.py" test="skip"}
+```python {title="environments_quickstart.py"}
 from pydantic_ai import Agent
 from pydantic_ai.environments import ExecutionEnvironmentToolset
 from pydantic_ai.environments.local import LocalEnvironment
@@ -20,6 +20,7 @@ async def main():
     async with env:
         result = await agent.run('Create a Python script that prints the first 10 Fibonacci numbers, then run it.')
         print(result.output)
+        #> Done! The first 10 Fibonacci numbers are: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34
 ```
 
 ## Environments
@@ -34,7 +35,7 @@ An [`ExecutionEnvironment`][pydantic_ai.environments.ExecutionEnvironment] defin
 
 All environments are async context managers. Enter the environment before running the agent, and exit it to clean up:
 
-```python {title="environments_lifecycle.py" test="skip"}
+```python {title="environments_lifecycle.py"}
 from pydantic_ai.environments.docker import DockerEnvironment
 
 env = DockerEnvironment(image='python:3.12-slim')
@@ -43,6 +44,10 @@ async def main():
     async with env:
         result = await env.shell('python -c "print(42)"')
         print(result.output)
+        """
+        42
+        """
+        #>
 ```
 
 ### LocalEnvironment
@@ -70,7 +75,7 @@ File operations (read, write, edit, ls, glob, grep) are confined to the root dir
 
 Requires the `docker` package: `pip install pydantic-ai-slim[docker-environment]`
 
-```python {title="environments_docker.py" test="skip"}
+```python {title="environments_docker.py"}
 from pydantic_ai.environments.docker import DockerEnvironment
 
 env = DockerEnvironment(
@@ -110,7 +115,7 @@ docker build -t my-sandbox:latest .
 
 Then pass the tag to `DockerEnvironment`:
 
-```python {title="environments_docker_custom.py" test="skip"}
+```python {title="environments_docker_custom.py"}
 from pydantic_ai.environments.docker import DockerEnvironment
 
 env = DockerEnvironment(image='my-sandbox:latest')
@@ -133,7 +138,7 @@ env = DockerEnvironment(image='my-sandbox:latest')
 
 For running untrusted code, you can harden the container with Linux security options:
 
-```python {title="environments_docker_hardened.py" test="skip"}
+```python {title="environments_docker_hardened.py"}
 from pydantic_ai.environments.docker import DockerEnvironment
 
 env = DockerEnvironment.hardened(image='python:3.12-slim')
@@ -141,7 +146,7 @@ env = DockerEnvironment.hardened(image='python:3.12-slim')
 
 This uses the [`hardened()`][pydantic_ai.environments.docker.DockerEnvironment.hardened] convenience constructor, which sets sensible security defaults: network disabled, read-only root filesystem, all capabilities dropped, no privilege escalation, runs as `nobody`, uses an init process, and limits PIDs, memory, and CPU. You can customize the resource limits:
 
-```python {title="environments_docker_hardened_custom.py" test="skip"}
+```python {title="environments_docker_hardened_custom.py"}
 from pydantic_ai.environments.docker import DockerEnvironment
 
 env = DockerEnvironment.hardened(
@@ -183,7 +188,7 @@ toolset = ExecutionEnvironmentToolset(
 
 The toolset manages the environment lifecycle when used as a context manager:
 
-```python {title="environments_agent.py" test="skip"}
+```python {title="environments_agent.py"}
 from pydantic_ai import Agent
 from pydantic_ai.environments import ExecutionEnvironmentToolset
 from pydantic_ai.environments.docker import DockerEnvironment
@@ -197,6 +202,9 @@ async def main():
     async with toolset:  # starts the Docker container
         result = await agent.run('Fetch https://httpbin.org/get and print the response')
         print(result.output)
+        """
+        Successfully fetched the URL. The response contains request metadata including headers and origin IP.
+        """
     # container cleaned up automatically
 ```
 
@@ -210,7 +218,7 @@ async def main():
 
 You can swap the backing environment at runtime using [`use_environment()`][pydantic_ai.environments.ExecutionEnvironmentToolset.use_environment]:
 
-```python {title="environments_override.py" test="skip"}
+```python {title="environments_override.py"}
 from pydantic_ai import Agent
 from pydantic_ai.environments import ExecutionEnvironmentToolset
 from pydantic_ai.environments.docker import DockerEnvironment
@@ -236,7 +244,7 @@ async def main():
 
 When multiple `agent.run()` calls execute concurrently (e.g. via `asyncio.gather`), a shared environment means they all operate on the same filesystem and processes, which can cause interference. Use `environment_factory` to create a fresh, isolated environment for each run:
 
-```python {title="environments_concurrent.py" test="skip"}
+```python {title="environments_concurrent.py"}
 import asyncio
 
 from pydantic_ai import Agent
