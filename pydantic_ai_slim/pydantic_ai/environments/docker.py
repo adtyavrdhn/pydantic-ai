@@ -112,8 +112,7 @@ def _globstar_zero_dir_variants(pattern: str) -> list[str]:
                 result += '**/' + segments[i + 1]
             else:
                 result += segments[i + 1]
-        if result:
-            variants.add(result)
+        variants.add(result)
     return sorted(variants)
 
 
