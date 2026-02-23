@@ -99,11 +99,17 @@ def _build_glob_cmd(pattern: str, *, path: str = '.') -> str:
         depth_flag = ''
     else:
         depth_flag = f' -maxdepth {pattern.count("/") + 1}'
-    return (
-        f'find {_shell_escape(path)}{depth_flag}'
-        f' \\( -path {_shell_escape(path_pattern)} -o -name {_shell_escape(pattern)} \\)'
-        f' 2>/dev/null | head -100'
-    )
+    conditions = [f'-path {_shell_escape(path_pattern)}', f'-name {_shell_escape(pattern)}']
+    # `**/' in find's -path requires at least one directory level, so files at
+    # the root of the search path won't match.  Add a condition for the suffix
+    # after `**/` to handle the zero-directory-levels case.
+    if pattern.startswith('**/'):
+        suffix = pattern[3:]
+        if '/' in suffix:
+            conditions.append(f'-path {_shell_escape(path + "/" + suffix)}')
+        else:
+            conditions.append(f'-name {_shell_escape(suffix)}')
+    return f'find {_shell_escape(path)}{depth_flag} \\( {" -o ".join(conditions)} \\) 2>/dev/null | head -100'
 
 
 def _parse_glob_output(text: str) -> list[str]:

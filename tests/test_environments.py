@@ -2675,6 +2675,14 @@ class TestDocker:
     def test_build_glob_cmd_recursive_no_maxdepth(self):
         cmd = _build_glob_cmd('**/*.py')
         assert '-maxdepth' not in cmd
+        # Root-level files should also match via the -name suffix condition
+        assert "-name '*.py'" in cmd
+
+    def test_build_glob_cmd_recursive_with_subdir(self):
+        cmd = _build_glob_cmd('**/subdir/*.py')
+        assert '-maxdepth' not in cmd
+        # Should include a -path condition for the root-level subdir case
+        assert "-path './subdir/*.py'" in cmd
 
     def test_parse_glob_output_empty(self):
         assert _parse_glob_output('') == []
