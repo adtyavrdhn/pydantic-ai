@@ -86,6 +86,37 @@ def _filter_grep_count_output(text: str) -> str:
     return '\n'.join(line for line in text.splitlines() if not line.endswith(':0'))
 
 
+def _globstar_zero_dir_variants(pattern: str) -> list[str]:
+    """Generate variants of *pattern* with one or more ``**/`` segments collapsed.
+
+    In ``find -path``, the literal ``/`` inside ``**/`` requires at least one
+    directory level, so ``**`` never matches zero directories.  This helper
+    produces all the collapsed forms needed to cover the zero-directory case.
+
+    Examples::
+
+        '**/*.py'          → ['*.py']
+        'src/**/*.py'      → ['src/*.py']
+        '**/src/**/*.py'   → ['**/src/*.py', 'src/**/*.py', 'src/*.py']
+    """
+    segments = pattern.split('**/')
+    if len(segments) <= 1:
+        return []
+    n = len(segments) - 1  # number of **/ occurrences
+    all_kept = (1 << n) - 1
+    variants: set[str] = set()
+    for mask in range(all_kept):  # every subset except "all kept" (= original)
+        result = segments[0]
+        for i in range(n):
+            if mask & (1 << i):
+                result += '**/' + segments[i + 1]
+            else:
+                result += segments[i + 1]
+        if result:
+            variants.add(result)
+    return sorted(variants)
+
+
 def _build_glob_cmd(pattern: str, *, path: str = '.') -> str:
     """Build a shell `find` command to match files by pattern.
 
@@ -100,15 +131,14 @@ def _build_glob_cmd(pattern: str, *, path: str = '.') -> str:
     else:
         depth_flag = f' -maxdepth {pattern.count("/") + 1}'
     conditions = [f'-path {_shell_escape(path_pattern)}', f'-name {_shell_escape(pattern)}']
-    # `**/' in find's -path requires at least one directory level, so files at
-    # the root of the search path won't match.  Add a condition for the suffix
-    # after `**/` to handle the zero-directory-levels case.
-    if pattern.startswith('**/'):
-        suffix = pattern[3:]
-        if '/' in suffix:
-            conditions.append(f'-path {_shell_escape(path + "/" + suffix)}')
+    # `**/` in find's -path requires at least one directory level, so `**`
+    # never matches zero directories.  Add conditions for every collapsed
+    # variant to cover the zero-directory case(s).
+    for variant in _globstar_zero_dir_variants(pattern):
+        if '/' in variant:
+            conditions.append(f'-path {_shell_escape(path + "/" + variant)}')
         else:
-            conditions.append(f'-name {_shell_escape(suffix)}')
+            conditions.append(f'-name {_shell_escape(variant)}')
     return f'find {_shell_escape(path)}{depth_flag} \\( {" -o ".join(conditions)} \\) 2>/dev/null | head -100'
 
 

@@ -44,6 +44,7 @@ try:
         _build_grep_cmd,
         _build_read_file_cmd,
         _filter_grep_count_output,
+        _globstar_zero_dir_variants,
         _parse_glob_output,
         _put_file,
         _shell_escape,
@@ -2690,6 +2691,33 @@ class TestDocker:
         assert '-maxdepth' not in cmd
         # Should include a -path condition for the root-level subdir case
         assert "-path './subdir/*.py'" in cmd
+
+    def test_build_glob_cmd_mid_pattern_globstar(self):
+        """Mid-pattern **/ should add a zero-directory fallback condition."""
+        cmd = _build_glob_cmd('src/**/*.py')
+        assert '-maxdepth' not in cmd
+        # The zero-directory collapse of src/**/*.py → src/*.py
+        assert "-path './src/*.py'" in cmd
+
+    def test_build_glob_cmd_multiple_globstars(self):
+        """Multiple **/ segments should generate all collapsed variants."""
+        cmd = _build_glob_cmd('**/src/**/*.py')
+        assert '-maxdepth' not in cmd
+        # All three collapsed variants
+        assert "-path './**/src/*.py'" in cmd
+        assert "-path './src/**/*.py'" in cmd
+        assert "-path './src/*.py'" in cmd
+
+    def test_globstar_zero_dir_variants(self):
+        assert _globstar_zero_dir_variants('*.py') == []
+        assert _globstar_zero_dir_variants('src/*.py') == []
+        assert _globstar_zero_dir_variants('**/*.py') == ['*.py']
+        assert _globstar_zero_dir_variants('src/**/*.py') == ['src/*.py']
+        assert sorted(_globstar_zero_dir_variants('**/src/**/*.py')) == [
+            '**/src/*.py',
+            'src/**/*.py',
+            'src/*.py',
+        ]
 
     def test_parse_glob_output_empty(self):
         assert _parse_glob_output('') == []
