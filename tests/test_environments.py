@@ -855,6 +855,13 @@ async def test_toolset_tool_name_conflict_hint():
 # --- ExecutionEnvironmentToolset: lifecycle ---
 
 
+async def test_toolset_enter_no_environment_raises():
+    toolset = ExecutionEnvironmentToolset()
+    with pytest.raises(RuntimeError, match='No execution environment configured'):
+        async with toolset:
+            pass
+
+
 async def test_toolset_lifecycle(tmp_path: Path):
     env = LocalEnvironment(tmp_path)
     toolset = ExecutionEnvironmentToolset(env)
