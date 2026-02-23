@@ -2699,6 +2699,9 @@ class TestDocker:
     def test_parse_glob_output_multiline(self):
         assert _parse_glob_output('a.py\nb.py\nc.py\n') == ['a.py', 'b.py', 'c.py']
 
+    def test_parse_glob_output_strips_dot_slash(self):
+        assert _parse_glob_output('./a.py\n./src/b.py\nc.py\n') == ['a.py', 'src/b.py', 'c.py']
+
     def test_filter_grep_count_output(self):
         text = 'a.py:3\nb.py:0\nc.py:1'
         result = _filter_grep_count_output(text)

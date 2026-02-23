@@ -117,7 +117,7 @@ def _parse_glob_output(text: str) -> list[str]:
     text = text.strip()
     if not text:
         return []
-    return [line for line in text.splitlines() if line]
+    return [line.removeprefix('./') for line in text.splitlines() if line]
 
 
 def _put_file(container: Container, path: str, data: bytes) -> None:
@@ -674,6 +674,8 @@ class DockerEnvironment(ExecutionEnvironment):
             cmd = _build_grep_cmd(pattern, path=path, glob_pattern=glob_pattern, output_mode=output_mode)
             _, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             text = output.decode('utf-8', errors='replace').strip()
+            # Strip `./` prefix from paths to match Local/Memory environment output
+            text = '\n'.join(line.removeprefix('./') for line in text.splitlines())
             if output_mode == 'count':
                 text = _filter_grep_count_output(text)
             return text
