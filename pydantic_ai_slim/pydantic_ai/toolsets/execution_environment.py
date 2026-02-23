@@ -418,9 +418,17 @@ class ExecutionEnvironmentToolset(FunctionToolset[Any]):
             async with self._enter_lock:
                 self._running_count += 1
                 if self._running_count == 1:
+                    # Use _shared_environment directly (not required_environment) to avoid
+                    # entering a use_environment() override into the shared exit stack.
+                    env = self._shared_environment
+                    if env is None:
+                        self._running_count -= 1
+                        raise RuntimeError(
+                            'No execution environment configured. Pass one to ExecutionEnvironmentToolset() or use environment_factory.'
+                        )
                     self._exit_stack = AsyncExitStack()
                     try:
-                        await self._exit_stack.enter_async_context(self.required_environment)
+                        await self._exit_stack.enter_async_context(env)
                     except Exception:
                         self._running_count -= 1
                         raise
