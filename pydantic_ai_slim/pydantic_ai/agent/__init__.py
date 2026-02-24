@@ -47,8 +47,10 @@ from ..output import OutputDataT, OutputSpec
 from ..run import AgentRun, AgentRunResult
 from ..settings import ModelSettings, merge_model_settings
 from ..tools import (
+    AfterToolCallHook,
     AgentDepsT,
     ArgsValidatorFunc,
+    BeforeToolCallHook,
     BuiltinToolFunc,
     DeferredToolResults,
     DocstringFormat,
@@ -174,6 +176,9 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
     _tool_timeout: float | None = dataclasses.field(repr=False)
     _validation_context: Any | Callable[[RunContext[AgentDepsT]], Any] = dataclasses.field(repr=False)
 
+    _before_tool_call_hooks: list[BeforeToolCallHook[AgentDepsT]] = dataclasses.field(repr=False)
+    _after_tool_call_hooks: list[AfterToolCallHook[AgentDepsT]] = dataclasses.field(repr=False)
+
     _event_stream_handler: EventStreamHandler[AgentDepsT] | None = dataclasses.field(repr=False)
 
     _concurrency_limiter: _concurrency.AbstractConcurrencyLimiter | None = dataclasses.field(repr=False)
@@ -206,6 +211,8 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
         instrument: InstrumentationSettings | bool | None = None,
         metadata: AgentMetadata[AgentDepsT] | None = None,
         history_processors: Sequence[HistoryProcessor[AgentDepsT]] | None = None,
+        before_tool_call_hooks: Sequence[BeforeToolCallHook[AgentDepsT]] | None = None,
+        after_tool_call_hooks: Sequence[AfterToolCallHook[AgentDepsT]] | None = None,
         event_stream_handler: EventStreamHandler[AgentDepsT] | None = None,
         tool_timeout: float | None = None,
         max_concurrency: _concurrency.AnyConcurrencyLimit = None,
@@ -266,6 +273,8 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
         instrument: InstrumentationSettings | bool | None = None,
         metadata: AgentMetadata[AgentDepsT] | None = None,
         history_processors: Sequence[HistoryProcessor[AgentDepsT]] | None = None,
+        before_tool_call_hooks: Sequence[BeforeToolCallHook[AgentDepsT]] | None = None,
+        after_tool_call_hooks: Sequence[AfterToolCallHook[AgentDepsT]] | None = None,
         event_stream_handler: EventStreamHandler[AgentDepsT] | None = None,
         tool_timeout: float | None = None,
         max_concurrency: _concurrency.AnyConcurrencyLimit = None,
@@ -333,6 +342,13 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
             history_processors: Optional list of callables to process the message history before sending it to the model.
                 Each processor takes a list of messages and returns a modified list of messages.
                 Processors can be sync or async and are applied in sequence.
+            before_tool_call_hooks: Optional list of hooks called before each tool execution.
+                Each hook receives the run context, tool definition, and args dict.
+                Return `None` to proceed with original args, or a `dict` to modify args.
+                Raise `ToolCallDenied` to deny the call, or `ApprovalRequired` for human approval.
+            after_tool_call_hooks: Optional list of hooks called after each tool execution.
+                Each hook receives the run context, tool definition, args dict, and the tool result.
+                The return value replaces the tool result.
             event_stream_handler: Optional handler for events from the model's streaming response and the agent's execution of tools.
             tool_timeout: Default timeout in seconds for tool execution. If a tool takes longer than this,
                 the tool is considered to have failed and a retry prompt is returned to the model (counting towards the retry limit).
@@ -416,6 +432,10 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
             if not isinstance(toolset, AbstractToolset)
         ]
         self._user_toolsets = [toolset for toolset in toolsets or [] if isinstance(toolset, AbstractToolset)]
+
+        self.history_processors = history_processors or []
+        self._before_tool_call_hooks = list(before_tool_call_hooks or [])
+        self._after_tool_call_hooks = list(after_tool_call_hooks or [])
 
         self._event_stream_handler = event_stream_handler
 
@@ -655,7 +675,12 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
                 output_toolset.max_retries = self._max_result_retries
                 output_toolset.output_validators = output_validators
         toolset = self._get_toolset(output_toolset=output_toolset, additional_toolsets=toolsets)
-        tool_manager = ToolManager[AgentDepsT](toolset, default_max_retries=self._max_tool_retries)
+        tool_manager = ToolManager[AgentDepsT](
+            toolset,
+            default_max_retries=self._max_tool_retries,
+            before_tool_call_hooks=self._before_tool_call_hooks,
+            after_tool_call_hooks=self._after_tool_call_hooks,
+        )
 
         # Build the graph
         graph = _agent_graph.build_agent_graph(self.name, self._deps_type, output_type_)
