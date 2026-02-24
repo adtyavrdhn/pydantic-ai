@@ -10,7 +10,7 @@ from typing import Any
 
 from ._run_context import AgentDepsT, RunContext
 from .exceptions import ApprovalRequired, ToolCallDenied
-from .tools import ToolDefinition
+from .tools import BeforeToolCallHook, ToolDefinition
 
 __all__ = (
     'ToolPermission',
@@ -80,7 +80,7 @@ def permission_hook(
     *,
     key_func: PermissionKeyFunc = default_permission_key,
     default: ToolPermission = ToolPermission.ASK,
-) -> Callable[..., Any]:
+) -> BeforeToolCallHook[Any]:
     """Factory that creates a `BeforeToolCallHook` from permission rules.
 
     The returned hook raises `ToolCallDenied` for denied calls and
