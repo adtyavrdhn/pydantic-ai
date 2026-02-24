@@ -129,9 +129,7 @@ def test_should_compact_custom_ratio():
 
 def test_should_compact_fallback_to_message_count():
     """When context_window is None, falls back to message count."""
-    messages: list[ModelMessage] = [
-        ModelRequest(parts=[UserPromptPart(content=f'msg {i}')]) for i in range(15)
-    ]
+    messages: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart(content=f'msg {i}')]) for i in range(15)]
     assert should_compact(messages, context_window=None, trigger_ratio=0.7, fallback_threshold=10) is True
     assert should_compact(messages, context_window=None, trigger_ratio=0.7, fallback_threshold=20) is False
 
@@ -189,7 +187,9 @@ async def test_masking_processor_token_trigger():
                 timestamp=IsDatetime(),
             ),
             ModelRequest(
-                parts=[ToolReturnPart(tool_name='my_tool', content='[compacted]', tool_call_id='1', timestamp=IsDatetime())],
+                parts=[
+                    ToolReturnPart(tool_name='my_tool', content='[compacted]', tool_call_id='1', timestamp=IsDatetime())
+                ],
             ),
             ModelResponse(
                 parts=[TextPart(content='processed')],
@@ -254,7 +254,11 @@ async def test_masking_processor_no_trigger_below_ratio():
                 timestamp=IsDatetime(),
             ),
             ModelRequest(
-                parts=[ToolReturnPart(tool_name='my_tool', content='long tool output data', tool_call_id='1', timestamp=IsDatetime())],
+                parts=[
+                    ToolReturnPart(
+                        tool_name='my_tool', content='long tool output data', tool_call_id='1', timestamp=IsDatetime()
+                    )
+                ],
             ),
             ModelResponse(
                 parts=[TextPart(content='processed')],
