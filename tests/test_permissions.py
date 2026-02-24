@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import pytest
 
 from pydantic_ai import FunctionToolset, ToolCallPart
-from pydantic_ai._permissions import PermissionRule, ToolPermission, default_permission_key, evaluate_permission, permission_hook
+from pydantic_ai._permissions import (
+    PermissionRule,
+    ToolPermission,
+    default_permission_key,
+    evaluate_permission,
+    permission_hook,
+)
 from pydantic_ai._run_context import RunContext
 from pydantic_ai._tool_manager import ToolManager
 from pydantic_ai.exceptions import ApprovalRequired, ToolCallDenied
