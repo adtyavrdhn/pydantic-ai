@@ -46,7 +46,7 @@ from ..messages import (
     VideoUrl,
 )
 from ..output import OutputMode
-from ..profiles import DEFAULT_PROFILE, ModelProfile, ModelProfileSpec
+from ..profiles import DEFAULT_PROFILE, ModelProfile, ModelProfileSpec, lookup_context_window
 from ..providers import Provider, infer_provider
 from ..settings import ModelSettings, merge_model_settings
 from ..tools import ToolDefinition
@@ -859,6 +859,10 @@ class Model(ABC):
 
         if effective_tools != profile_supported:
             _profile = replace(_profile, supported_builtin_tools=effective_tools)
+
+        if _profile.context_window is None:
+            if (cw := lookup_context_window(self.system, self.model_name)) is not None:
+                _profile = replace(_profile, context_window=cw)
 
         return _profile
 

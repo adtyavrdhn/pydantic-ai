@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, fields, replace
 from textwrap import dedent
 
+from genai_prices.data_snapshot import get_snapshot as _get_genai_prices_snapshot
 from typing_extensions import Self
 
 from .._json_schema import InlineDefsJsonSchemaTransformer, JsonSchemaTransformer
@@ -77,6 +78,12 @@ class ModelProfile:
     restrict this based on model capabilities.
     """
 
+    context_window: int | None = None
+    """The model's context window size in tokens, if known.
+
+    Auto-populated from genai-prices when not explicitly set.
+    """
+
     @classmethod
     def from_profile(cls, profile: ModelProfile | None) -> Self:
         """Build a ModelProfile subclass instance from a ModelProfile instance."""
@@ -100,3 +107,13 @@ class ModelProfile:
 ModelProfileSpec = ModelProfile | Callable[[str], ModelProfile | None]
 
 DEFAULT_PROFILE = ModelProfile()
+
+
+def lookup_context_window(system: str, model_name: str) -> int | None:
+    """Look up context_window from genai-prices for a given provider system and model name."""
+    try:
+        provider = _get_genai_prices_snapshot().find_provider(None, system, None)
+        _, model_info = _get_genai_prices_snapshot().find_provider_model(model_name, provider, None, None)
+        return model_info.context_window
+    except Exception:
+        return None

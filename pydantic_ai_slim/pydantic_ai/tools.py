@@ -30,6 +30,8 @@ __all__ = (
     'Tool',
     'ObjectJsonSchema',
     'ToolDefinition',
+    'BeforeToolCallHook',
+    'AfterToolCallHook',
     'DeferredToolRequests',
     'DeferredToolResults',
     'ToolApproved',
@@ -455,6 +457,25 @@ With PEP-728 this should be a TypedDict with `type: Literal['object']`, and `ext
 
 ToolKind: TypeAlias = Literal['function', 'output', 'external', 'unapproved']
 """Kind of tool."""
+
+
+BeforeToolCallHook: TypeAlias = Callable[
+    [RunContext[AgentDepsT], 'ToolDefinition', dict[str, Any]],
+    Awaitable[dict[str, Any] | None],
+]
+"""Hook called before a tool is executed.
+
+Return `None` to proceed with the original args, or a `dict` to proceed with modified args.
+
+To deny the tool call, raise [`ToolCallDenied`][pydantic_ai.exceptions.ToolCallDenied].
+To defer for human approval, raise [`ApprovalRequired`][pydantic_ai.exceptions.ApprovalRequired].
+"""
+
+AfterToolCallHook: TypeAlias = Callable[
+    [RunContext[AgentDepsT], 'ToolDefinition', dict[str, Any], Any],
+    Awaitable[Any],
+]
+"""Hook called after a tool is executed. Returns the (possibly transformed) result."""
 
 
 @dataclass(repr=False, kw_only=True)
