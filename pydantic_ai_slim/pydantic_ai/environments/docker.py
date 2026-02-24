@@ -162,7 +162,7 @@ def _put_file(container: Container, path: str, data: bytes) -> None:
     container.put_archive(parent, f)  # pyright: ignore[reportUnknownMemberType]
 
 
-class DockerEnvironmentProcess(ExecutionProcess):
+class _DockerEnvironmentProcess(ExecutionProcess):
     """Interactive process inside a Docker container using exec with socket I/O.
 
     Docker's exec socket uses a multiplexed stream protocol where stdout and
@@ -514,18 +514,18 @@ class DockerEnvironment(ExecutionEnvironment):
         if self._container is not None:  # pragma: no branch
             try:
                 self._container.stop(timeout=5)
-            except Exception:
+            except (DockerException, OSError):
                 # Best-effort cleanup: container may already be stopped or removed
                 pass
             try:
                 self._container.remove(force=True)
-            except Exception:
+            except (DockerException, OSError):
                 # Best-effort cleanup: container may already be removed
                 pass
             self._container = None
 
     @property
-    def container(self) -> Container:
+    def _required_container(self) -> Container:
         if self._container is None:
             raise RuntimeError('DockerEnvironment not started. Use `async with DockerEnvironment(...) as env:`')
         return self._container
@@ -547,7 +547,7 @@ class DockerEnvironment(ExecutionEnvironment):
         *,
         env: dict[str, str] | None = None,
     ) -> ExecutionProcess:
-        return DockerEnvironmentProcess(self.container, command, self._work_dir, env=env)
+        return _DockerEnvironmentProcess(self._required_container, command, self._work_dir, env=env)
 
     async def shell(
         self,
@@ -566,7 +566,7 @@ class DockerEnvironment(ExecutionEnvironment):
             exec_kwargs: dict[str, Any] = {'workdir': self._work_dir}
             if env:
                 exec_kwargs['environment'] = env
-            exit_code, output = self.container.exec_run(
+            exit_code, output = self._required_container.exec_run(
                 ['sh', '-c', wrapped],
                 **exec_kwargs,
             )
@@ -589,7 +589,7 @@ class DockerEnvironment(ExecutionEnvironment):
 
         def _read() -> str | bytes:
             cmd = _build_read_file_cmd(path, offset=offset, limit=limit)
-            exit_code, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
+            exit_code, output = self._required_container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             if exit_code != 0:
                 raise FileNotFoundError(f'File not found or not readable: {path}')
             try:
@@ -606,7 +606,7 @@ class DockerEnvironment(ExecutionEnvironment):
     def _read_file_bytes_sync(self, path: str) -> bytes:
         """Read raw file bytes using Docker's get_archive API."""
         try:
-            bits, _ = self.container.get_archive(self._resolve_path(path))
+            bits, _ = self._required_container.get_archive(self._resolve_path(path))
         except NotFound:
             raise FileNotFoundError(f'File not found: {path}')
         # get_archive returns a tar stream
@@ -625,10 +625,10 @@ class DockerEnvironment(ExecutionEnvironment):
             full_path = self._resolve_path(path)
             # Ensure parent directory exists
             parent = str(PurePosixPath(full_path).parent)
-            self.container.exec_run(['mkdir', '-p', parent])
+            self._required_container.exec_run(['mkdir', '-p', parent])
 
             data = content.encode('utf-8') if isinstance(content, str) else content
-            _put_file(self.container, full_path, data)
+            _put_file(self._required_container, full_path, data)
 
         await anyio.to_thread.run_sync(_write)
 
@@ -644,7 +644,7 @@ class DockerEnvironment(ExecutionEnvironment):
             raw = self._read_file_bytes_sync(path)
             text = raw.decode('utf-8')
             new_text, count = apply_edit(text, old, new, path, replace_all=replace_all)
-            _put_file(self.container, self._resolve_path(path), new_text.encode('utf-8'))
+            _put_file(self._required_container, self._resolve_path(path), new_text.encode('utf-8'))
             return count
 
         return await anyio.to_thread.run_sync(_edit)
@@ -652,7 +652,7 @@ class DockerEnvironment(ExecutionEnvironment):
     async def ls(self, path: str = '.') -> list[FileInfo]:
         def _ls() -> list[FileInfo]:
             cmd = f'ls -la {_shell_escape(path)}'
-            exit_code, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
+            exit_code, output = self._required_container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             if exit_code != 0:
                 raise NotADirectoryError(f'Not a directory or not found: {path}')
 
@@ -679,7 +679,7 @@ class DockerEnvironment(ExecutionEnvironment):
     async def glob(self, pattern: str, *, path: str = '.') -> list[str]:
         def _glob() -> list[str]:
             cmd = _build_glob_cmd(pattern, path=path)
-            _, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
+            _, output = self._required_container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             return _parse_glob_output(output.decode('utf-8', errors='replace'))
 
         return await anyio.to_thread.run_sync(_glob)
@@ -701,7 +701,7 @@ class DockerEnvironment(ExecutionEnvironment):
 
         def _grep() -> str:
             cmd = _build_grep_cmd(pattern, path=path, glob_pattern=glob_pattern, output_mode=output_mode)
-            _, output = self.container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
+            _, output = self._required_container.exec_run(['sh', '-c', cmd], workdir=self._work_dir)
             text = output.decode('utf-8', errors='replace').strip()
             # Strip `./` prefix from paths to match Local/Memory environment output
             text = '\n'.join(line.removeprefix('./') for line in text.splitlines())
@@ -725,7 +725,7 @@ class DockerEnvironment(ExecutionEnvironment):
             try:
                 self._container.reload()
                 return self._container.status == 'running'
-            except Exception:
+            except (DockerException, OSError):
                 return False
 
         return await anyio.to_thread.run_sync(_check)

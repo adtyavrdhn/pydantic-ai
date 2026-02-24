@@ -29,7 +29,7 @@ from ._base import (
 )
 
 
-class LocalEnvironmentProcess(ExecutionProcess):
+class _LocalEnvironmentProcess(ExecutionProcess):
     """Interactive process backed by `anyio.abc.Process`."""
 
     def __init__(self, proc: anyio.abc.Process) -> None:
@@ -178,7 +178,7 @@ class LocalEnvironment(ExecutionEnvironment):
             cwd=self._root_dir,
             env=self._build_env(env),
         )
-        return LocalEnvironmentProcess(proc)
+        return _LocalEnvironmentProcess(proc)
 
     async def shell(
         self,

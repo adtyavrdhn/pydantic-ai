@@ -28,21 +28,21 @@ from pydantic_ai.environments._base import (
     format_lines,
     glob_match,
 )
-from pydantic_ai.environments.local import LocalEnvironment, LocalEnvironmentProcess
+from pydantic_ai.environments.local import LocalEnvironment, _LocalEnvironmentProcess
 from pydantic_ai.environments.memory import MemoryEnvironment
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.usage import RunUsage
 
 try:
-    from docker.errors import NotFound as DockerNotFound
+    from docker.errors import DockerException, NotFound as DockerNotFound
 
     from pydantic_ai.environments.docker import (
         DockerEnvironment,
-        DockerEnvironmentProcess,
         _build_glob_cmd,
         _build_grep_cmd,
         _build_read_file_cmd,
+        _DockerEnvironmentProcess,
         _filter_grep_count_output,
         _globstar_zero_dir_variants,
         _parse_glob_output,
@@ -1921,14 +1921,14 @@ class TestDocker:
         assert 'b.py:0' not in result
 
     async def test_docker_container_property(self, mock_docker_sandbox: Any) -> None:
-        """DockerEnvironment.container raises when not started."""
+        """DockerEnvironment._required_container raises when not started."""
 
         sandbox = DockerEnvironment()
         with pytest.raises(RuntimeError, match='not started'):
-            _ = sandbox.container
+            _ = sandbox._required_container
 
     async def test_docker_create_process(self, mock_docker_sandbox: Any) -> None:
-        """DockerEnvironment.create_process returns a DockerEnvironmentProcess."""
+        """DockerEnvironment.create_process returns a _DockerEnvironmentProcess."""
         proc = await mock_docker_sandbox.create_process('echo test')
         assert proc is not None
 
@@ -1961,10 +1961,10 @@ class TestDocker:
         assert container._files['/workspace/test.txt'] == b'hello'
 
     def test_docker_sandbox_process_read_frame(self) -> None:
-        """DockerEnvironmentProcess._read_frame parses multiplexed stream frames."""
+        """_DockerEnvironmentProcess._read_frame parses multiplexed stream frames."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         # Create a mock socket with a multiplexed frame
         stdout_data = b'hello from stdout'
@@ -1979,10 +1979,10 @@ class TestDocker:
         assert data == stdout_data
 
     def test_docker_sandbox_process_read_frame_stderr(self) -> None:
-        """DockerEnvironmentProcess._read_frame handles stderr frames."""
+        """_DockerEnvironmentProcess._read_frame handles stderr frames."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         stderr_data = b'error output'
         header = struct.pack('>BxxxI', 2, len(stderr_data))  # stream_type=2 (stderr)
@@ -1996,10 +1996,10 @@ class TestDocker:
         assert data == stderr_data
 
     def test_docker_sandbox_process_read_frame_eof(self) -> None:
-        """DockerEnvironmentProcess._read_frame returns empty on EOF."""
+        """_DockerEnvironmentProcess._read_frame returns empty on EOF."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         mock_socket = MagicMock()
         mock_socket.recv.return_value = b''  # EOF
@@ -2011,10 +2011,10 @@ class TestDocker:
         assert proc._eof is True
 
     def test_docker_sandbox_process_read_frame_zero_size(self) -> None:
-        """DockerEnvironmentProcess._read_frame handles zero-size frames."""
+        """_DockerEnvironmentProcess._read_frame handles zero-size frames."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         header = struct.pack('>BxxxI', 1, 0)  # zero size
 
@@ -2027,10 +2027,10 @@ class TestDocker:
         assert data == b''
 
     def test_docker_sandbox_process_already_eof(self) -> None:
-        """DockerEnvironmentProcess._read_frame returns empty when already at EOF."""
+        """_DockerEnvironmentProcess._read_frame returns empty when already at EOF."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._eof = True
 
         stream_type, data = proc._read_frame()
@@ -2061,9 +2061,9 @@ class TestDocker:
     async def test_docker_process_recv_stderr_no_buffer(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.recv_stderr without buffered data (no timeout)."""
+        """_DockerEnvironmentProcess.recv_stderr without buffered data (no timeout)."""
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         stderr_data = b'error output'
         header = struct.pack('>BxxxI', 2, len(stderr_data))
@@ -2077,9 +2077,9 @@ class TestDocker:
     async def test_docker_process_recv_stream_buffers_stdout(
         self,
     ) -> None:
-        """DockerEnvironmentProcess._recv_stream buffers stdout when stderr is wanted."""
+        """_DockerEnvironmentProcess._recv_stream buffers stdout when stderr is wanted."""
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         # First frame is stdout (type 1), second is stderr (type 2)
         stdout_data = b'stdout output'
@@ -2099,9 +2099,9 @@ class TestDocker:
     async def test_docker_process_wait_no_timeout(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.wait without timeout polls until returncode is set."""
+        """_DockerEnvironmentProcess.wait without timeout polls until returncode is set."""
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._exec_id = 'exec-123'
         # Mock exec_inspect to return "still running" first, then "exited"
         call_count = 0
@@ -2121,9 +2121,9 @@ class TestDocker:
     async def test_docker_process_wait_with_timeout(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.wait with timeout."""
+        """_DockerEnvironmentProcess.wait with timeout."""
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._returncode = 42
         result = await proc.wait(timeout=5.0)
         assert result == 42
@@ -2182,7 +2182,7 @@ class TestDocker:
 
     async def test_docker_is_alive_exception(self, mock_docker_sandbox: Any, mock_container: MockContainer) -> None:
         """DockerEnvironment.is_alive returns False when reload raises."""
-        mock_container.reload = MagicMock(side_effect=Exception('connection error'))
+        mock_container.reload = MagicMock(side_effect=DockerException('connection error'))
         result = await mock_docker_sandbox.is_alive()
         assert result is False
 
@@ -2194,10 +2194,10 @@ class TestDocker:
     async def test_docker_process_recv_with_buffered_data(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.recv returns buffered stdout data first."""
+        """_DockerEnvironmentProcess.recv returns buffered stdout data first."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._stdout_buffer.append(b'buffered data')
 
         result = await proc.recv()
@@ -2207,10 +2207,10 @@ class TestDocker:
     async def test_docker_process_recv_stderr_with_buffered_data(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.recv_stderr returns buffered stderr data first."""
+        """_DockerEnvironmentProcess.recv_stderr returns buffered stderr data first."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._stderr_buffer.append(b'buffered error')
 
         result = await proc.recv_stderr()
@@ -2220,10 +2220,10 @@ class TestDocker:
     async def test_docker_process_recv_stream_buffers_other(
         self,
     ) -> None:
-        """DockerEnvironmentProcess._recv_stream buffers frames for the other stream."""
+        """_DockerEnvironmentProcess._recv_stream buffers frames for the other stream."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         # First frame is stderr (type 2), second is stdout (type 1)
         stderr_data = b'error output'
@@ -2243,10 +2243,10 @@ class TestDocker:
     async def test_docker_process_recv_stream_eof(
         self,
     ) -> None:
-        """DockerEnvironmentProcess._recv_stream returns empty on EOF."""
+        """_DockerEnvironmentProcess._recv_stream returns empty on EOF."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         mock_socket = MagicMock()
         mock_socket.recv.return_value = b''  # EOF
@@ -2258,10 +2258,10 @@ class TestDocker:
     async def test_docker_process_kill(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.kill closes the socket."""
+        """_DockerEnvironmentProcess.kill closes the socket."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         mock_socket = MagicMock()
         proc._socket = mock_socket
 
@@ -2271,10 +2271,10 @@ class TestDocker:
     async def test_docker_process_kill_oserror(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.kill handles OSError."""
+        """_DockerEnvironmentProcess.kill handles OSError."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         mock_socket = MagicMock()
         mock_socket.close.side_effect = OSError('socket error')
         proc._socket = mock_socket
@@ -2285,10 +2285,10 @@ class TestDocker:
     async def test_docker_process_returncode(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.returncode checks exec status."""
+        """_DockerEnvironmentProcess.returncode checks exec status."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         # No exec_id means returncode is None
         assert proc.returncode is None
@@ -2301,11 +2301,11 @@ class TestDocker:
     async def test_docker_process_returncode_from_inspect(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.returncode polls Docker API."""
+        """_DockerEnvironmentProcess.returncode polls Docker API."""
 
         container = MockContainer()
         container.client.api.exec_inspect.return_value = {'ExitCode': 42, 'Running': False}
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._exec_id = 'exec-123'
 
         assert proc.returncode == 42
@@ -2314,12 +2314,12 @@ class TestDocker:
     async def test_docker_process_returncode_still_running(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.returncode returns None when process is running (ExitCode=0, Running=True)."""
+        """_DockerEnvironmentProcess.returncode returns None when process is running (ExitCode=0, Running=True)."""
 
         container = MockContainer()
         # Docker returns ExitCode=0 + Running=True for still-running processes
         container.client.api.exec_inspect.return_value = {'ExitCode': 0, 'Running': True}
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._exec_id = 'exec-123'
 
         assert proc.returncode is None
@@ -2327,11 +2327,11 @@ class TestDocker:
     async def test_docker_process_returncode_inspect_error(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.returncode handles API errors."""
+        """_DockerEnvironmentProcess.returncode handles API errors."""
 
         container = MockContainer()
         container.client.api.exec_inspect.side_effect = OSError('connection failed')
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         proc._exec_id = 'exec-123'
 
         assert proc.returncode is None
@@ -2339,10 +2339,10 @@ class TestDocker:
     async def test_docker_process_send(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.send writes to socket."""
+        """_DockerEnvironmentProcess.send writes to socket."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         mock_socket = MagicMock()
         proc._socket = mock_socket
 
@@ -2352,10 +2352,10 @@ class TestDocker:
     async def test_docker_process_recv_with_timeout(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.recv with timeout."""
+        """_DockerEnvironmentProcess.recv with timeout."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         stdout_data = b'data'
         header = struct.pack('>BxxxI', 1, len(stdout_data))
@@ -2369,10 +2369,10 @@ class TestDocker:
     async def test_docker_process_recv_stderr_with_timeout(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.recv_stderr with timeout."""
+        """_DockerEnvironmentProcess.recv_stderr with timeout."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         stderr_data = b'error'
         header = struct.pack('>BxxxI', 2, len(stderr_data))
@@ -2386,10 +2386,10 @@ class TestDocker:
     async def test_docker_read_frame_data_eof_during_read(
         self,
     ) -> None:
-        """DockerEnvironmentProcess._read_frame handles EOF during data read."""
+        """_DockerEnvironmentProcess._read_frame handles EOF during data read."""
 
         container = MockContainer()
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
 
         # Header says 100 bytes but socket returns less then EOF
         header = struct.pack('>BxxxI', 1, 100)
@@ -2405,14 +2405,14 @@ class TestDocker:
     async def test_docker_process_start_with_env(
         self,
     ) -> None:
-        """DockerEnvironmentProcess._do_start passes env to exec_create."""
+        """_DockerEnvironmentProcess._do_start passes env to exec_create."""
 
         container = MockContainer()
         container.client.api.exec_create.return_value = {'Id': 'exec-test'}
         mock_sock = MagicMock()
         container.client.api.exec_start.return_value = mock_sock
 
-        proc = DockerEnvironmentProcess(
+        proc = _DockerEnvironmentProcess(
             container,  # type: ignore[arg-type]
             'echo test',
             '/workspace',
@@ -2427,14 +2427,14 @@ class TestDocker:
     async def test_docker_process_aenter(
         self,
     ) -> None:
-        """DockerEnvironmentProcess.__aenter__ starts the process."""
+        """_DockerEnvironmentProcess.__aenter__ starts the process."""
 
         container = MockContainer()
         container.client.api.exec_create.return_value = {'Id': 'exec-aenter'}
         mock_sock = MagicMock()
         container.client.api.exec_start.return_value = mock_sock
 
-        proc = DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
+        proc = _DockerEnvironmentProcess(container, 'echo test', '/workspace')  # type: ignore[arg-type]
         entered = await proc.__aenter__()
         assert entered is proc
         assert proc._exec_id == 'exec-aenter'
@@ -2521,8 +2521,8 @@ class TestDocker:
 
         sandbox = DockerEnvironment()
         mock_container = MagicMock()
-        mock_container.stop.side_effect = Exception('stop failed')
-        mock_container.remove.side_effect = Exception('remove failed')
+        mock_container.stop.side_effect = DockerException('stop failed')
+        mock_container.remove.side_effect = DockerException('remove failed')
         sandbox._container = mock_container
 
         # Should not raise
@@ -2820,34 +2820,34 @@ async def test_toolset_lifecycle_error(tmp_path: Path):
 
 
 async def test_local_process_stdin_not_available():
-    """LocalEnvironmentProcess.send raises when stdin is None."""
+    """_LocalEnvironmentProcess.send raises when stdin is None."""
     mock_proc = MagicMock()
     mock_proc.stdin = None
-    proc = LocalEnvironmentProcess(mock_proc)
+    proc = _LocalEnvironmentProcess(mock_proc)
     with pytest.raises(RuntimeError, match='stdin'):
         await proc.send(b'data')
 
 
 async def test_local_process_stdout_not_available():
-    """LocalEnvironmentProcess.recv raises when stdout is None."""
+    """_LocalEnvironmentProcess.recv raises when stdout is None."""
     mock_proc = MagicMock()
     mock_proc.stdout = None
-    proc = LocalEnvironmentProcess(mock_proc)
+    proc = _LocalEnvironmentProcess(mock_proc)
     with pytest.raises(RuntimeError, match='stdout'):
         await proc.recv()
 
 
 async def test_local_process_stderr_not_available():
-    """LocalEnvironmentProcess.recv_stderr raises when stderr is None."""
+    """_LocalEnvironmentProcess.recv_stderr raises when stderr is None."""
     mock_proc = MagicMock()
     mock_proc.stderr = None
-    proc = LocalEnvironmentProcess(mock_proc)
+    proc = _LocalEnvironmentProcess(mock_proc)
     with pytest.raises(RuntimeError, match='stderr'):
         await proc.recv_stderr()
 
 
 async def test_local_process_recv_stderr_timeout(tmp_path: Path):
-    """LocalEnvironmentProcess.recv_stderr with timeout."""
+    """_LocalEnvironmentProcess.recv_stderr with timeout."""
     env = LocalEnvironment(tmp_path)
     proc = await env.create_process('python -c "import sys; sys.stderr.write(\'err\\n\')"')
     async with proc:
@@ -2856,7 +2856,7 @@ async def test_local_process_recv_stderr_timeout(tmp_path: Path):
 
 
 async def test_local_process_recv_stderr_eof(tmp_path: Path):
-    """LocalEnvironmentProcess.recv_stderr returns empty on EOF."""
+    """_LocalEnvironmentProcess.recv_stderr returns empty on EOF."""
     env = LocalEnvironment(tmp_path)
     proc = await env.create_process('echo done')
     async with proc:
@@ -2867,7 +2867,7 @@ async def test_local_process_recv_stderr_eof(tmp_path: Path):
 
 
 async def test_local_process_kill_terminates_sleep(tmp_path: Path):
-    """LocalEnvironmentProcess.kill terminates process."""
+    """_LocalEnvironmentProcess.kill terminates process."""
     env = LocalEnvironment(tmp_path)
     proc = await env.create_process('sleep 60')
     async with proc:
@@ -3018,7 +3018,7 @@ async def test_memory_glob_in_subdirectory_with_path_filter():
 
 
 async def test_local_process_wait_no_timeout(tmp_path: Path):
-    """LocalEnvironmentProcess.wait without timeout (line 74)."""
+    """_LocalEnvironmentProcess.wait without timeout (line 74)."""
     env = LocalEnvironment(tmp_path)
     proc = await env.create_process('true')
     async with proc:
@@ -3320,7 +3320,7 @@ async def test_toolset_use_environment_filters_tools():
 
 
 async def test_local_recv_no_timeout(tmp_path: Path):
-    """LocalEnvironmentProcess.recv without timeout returns data."""
+    """_LocalEnvironmentProcess.recv without timeout returns data."""
     env = LocalEnvironment(tmp_path)
     proc = await env.create_process('echo hello')
     async with proc:
@@ -3329,7 +3329,7 @@ async def test_local_recv_no_timeout(tmp_path: Path):
 
 
 async def test_local_recv_end_of_stream(tmp_path: Path):
-    """LocalEnvironmentProcess.recv returns empty bytes at EndOfStream."""
+    """_LocalEnvironmentProcess.recv returns empty bytes at EndOfStream."""
     env = LocalEnvironment(tmp_path)
     proc = await env.create_process('true')
     async with proc:

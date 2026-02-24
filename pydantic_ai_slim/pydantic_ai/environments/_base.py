@@ -66,7 +66,7 @@ class FileInfo:
 
 
 class ExecutionProcess(ABC):
-    r"""Handle to a running process with bidirectional streaming I/O.
+    """Handle to a running process with bidirectional streaming I/O.
 
     Used for interactive execution where a script outputs data,
     waits for input, processes it, and outputs more data.
