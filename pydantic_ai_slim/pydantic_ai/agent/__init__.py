@@ -51,8 +51,6 @@ from ..settings import ModelSettings, merge_model_settings
 from ..tools import (
     AfterToolCallHook,
     AgentDepsT,
-    ArgsValidatorFunc,
-    BeforeToolCallHook,
     BuiltinToolFunc,
     DeferredToolResults,
     DocstringFormat,
@@ -435,8 +433,7 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
         ]
         self._user_toolsets = [toolset for toolset in toolsets or [] if isinstance(toolset, AbstractToolset)]
 
-        self._before_tool_call_hooks = list(before_tool_call_hooks or [])
-        self._after_tool_call_hooks = list(after_tool_call_hooks or [])
+        self.history_processors = history_processors or []
 
         self._event_stream_handler = event_stream_handler
 
