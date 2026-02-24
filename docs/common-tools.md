@@ -139,6 +139,37 @@ Feel free to click on the links to dive deeper into each story!
 """
 ```
 
+## Web Fetch Tool
+
+The web fetch tool allows your agent to fetch and read web page content. HTML pages are automatically converted to markdown for easier consumption by LLMs. Unlike provider-native web browsing tools, this tool works with any model provider.
+
+### Installation
+
+To use [`web_fetch_tool`][pydantic_ai.common_tools.web_fetch.web_fetch_tool], you need to install
+[`pydantic-ai-slim`](install.md#slim-install) with the `web-fetch` optional group:
+
+```bash
+pip/uv-add "pydantic-ai-slim[web-fetch]"
+```
+
+### Usage
+
+Here's an example of how you can use the web fetch tool with an agent:
+
+```py {title="web_fetch.py" test="skip"}
+from pydantic_ai import Agent
+from pydantic_ai.common_tools.web_fetch import web_fetch_tool
+
+agent = Agent(
+    'openai:gpt-5.2',
+    tools=[web_fetch_tool()],
+    instructions='Fetch web pages and summarize their content.',
+)
+
+result = agent.run_sync('What is on the Pydantic AI homepage at https://ai.pydantic.dev?')
+print(result.output)
+```
+
 ## Exa Search Tool
 
 !!! info
