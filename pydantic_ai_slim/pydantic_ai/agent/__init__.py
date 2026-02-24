@@ -41,7 +41,9 @@ from .._agent_graph import (
 from .._output import OutputToolset
 from .._tool_manager import ParallelExecutionMode, ToolManager
 from ..builtin_tools import AbstractBuiltinTool
-from ..capabilities.abstract import AbstractCapability, CombinedCapability, HistoryProcessorCapability
+from ..capabilities.abstract import AbstractCapability
+from ..capabilities.combined import CombinedCapability
+from ..capabilities.history_processor import HistoryProcessorCapability
 from ..models.instrumented import InstrumentationSettings, InstrumentedModel, instrument_model
 from ..output import OutputDataT, OutputSpec
 from ..run import AgentRun, AgentRunResult
@@ -433,7 +435,6 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
         ]
         self._user_toolsets = [toolset for toolset in toolsets or [] if isinstance(toolset, AbstractToolset)]
 
-        self.history_processors = history_processors or []
         self._before_tool_call_hooks = list(before_tool_call_hooks or [])
         self._after_tool_call_hooks = list(after_tool_call_hooks or [])
 

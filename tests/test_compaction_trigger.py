@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from pydantic_ai import Agent, ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart, capture_run_messages
-from pydantic_ai.compaction._trigger import last_input_tokens, should_compact
-from pydantic_ai.compaction.masking import ObservationMaskingProcessor
+from pydantic_ai.capabilities.compaction._trigger import last_input_tokens, should_compact
+from pydantic_ai.capabilities.compaction.masking import ObservationMaskingCapability
 from pydantic_ai.messages import ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.profiles import ModelProfile, lookup_context_window
@@ -144,11 +144,11 @@ def test_should_compact_no_response_falls_back():
     assert should_compact(messages, context_window=128_000, trigger_ratio=0.7, fallback_threshold=10) is False
 
 
-# --- ObservationMaskingProcessor with token-based trigger ---
+# --- ObservationMaskingCapability with token-based trigger ---
 
 
 async def test_masking_processor_token_trigger():
-    """ObservationMaskingProcessor triggers based on token usage when context_window is known."""
+    """ObservationMaskingCapability triggers based on token usage when context_window is known."""
     profile = ModelProfile(context_window=128_000)
 
     def model_fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -158,8 +158,8 @@ async def test_masking_processor_token_trigger():
         )
 
     model = FunctionModel(model_fn, profile=profile)
-    processor = ObservationMaskingProcessor(keep_last=2, trigger_ratio=0.7)
-    agent = Agent(model, history_processors=[processor])
+    processor = ObservationMaskingCapability(keep_last=2, trigger_ratio=0.7)
+    agent = Agent(model, capabilities=[processor])
 
     message_history: list[ModelMessage] = [
         ModelRequest(parts=[UserPromptPart(content='call tool')]),
@@ -213,7 +213,7 @@ async def test_masking_processor_token_trigger():
 
 
 async def test_masking_processor_no_trigger_below_ratio():
-    """ObservationMaskingProcessor does NOT trigger when below ratio threshold."""
+    """ObservationMaskingCapability does NOT trigger when below ratio threshold."""
     profile = ModelProfile(context_window=1_000_000)  # 1M context — usage is well below 70%
 
     def model_fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -223,8 +223,8 @@ async def test_masking_processor_no_trigger_below_ratio():
         )
 
     model = FunctionModel(model_fn, profile=profile)
-    processor = ObservationMaskingProcessor(keep_last=2, trigger_ratio=0.7)
-    agent = Agent(model, history_processors=[processor])
+    processor = ObservationMaskingCapability(keep_last=2, trigger_ratio=0.7)
+    agent = Agent(model, capabilities=[processor])
 
     message_history: list[ModelMessage] = [
         ModelRequest(parts=[UserPromptPart(content='call tool')]),
@@ -278,14 +278,14 @@ async def test_masking_processor_no_trigger_below_ratio():
 
 
 async def test_masking_processor_fallback_message_count():
-    """ObservationMaskingProcessor falls back to message count when context_window is None."""
+    """ObservationMaskingCapability falls back to message count when context_window is None."""
 
     def model_fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         return ModelResponse(parts=[TextPart(content='response')])
 
     model = FunctionModel(model_fn)
-    processor = ObservationMaskingProcessor(keep_last=2)
-    agent = Agent(model, history_processors=[processor])
+    processor = ObservationMaskingCapability(keep_last=2)
+    agent = Agent(model, capabilities=[processor])
 
     message_history: list[ModelMessage] = [
         ModelRequest(parts=[ToolReturnPart(tool_name='t', content='old data', tool_call_id='1')]),

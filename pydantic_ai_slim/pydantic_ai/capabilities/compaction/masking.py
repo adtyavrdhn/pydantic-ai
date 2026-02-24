@@ -1,4 +1,4 @@
-"""History processor that masks old tool return content to reduce token usage."""
+"""Capability that masks old tool return content to reduce token usage."""
 
 from __future__ import annotations
 
@@ -6,14 +6,17 @@ import copy
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic_ai._run_context import RunContext
-from pydantic_ai.compaction._trigger import should_compact
+from pydantic_ai.capabilities.abstract import AbstractCapability
+from pydantic_ai.capabilities.compaction._trigger import should_compact
 from pydantic_ai.messages import ModelMessage, ModelRequest, RetryPromptPart, ToolReturnPart
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import AgentDepsT, RunContext
 
 
 @dataclass
-class ObservationMaskingProcessor:
-    """A history processor that replaces old tool return content with a placeholder.
+class ObservationMaskingCapability(AbstractCapability[AgentDepsT]):
+    """A capability that replaces old tool return content with a placeholder.
 
     Keeps the structure of the conversation intact (tool call/return pairs are preserved)
     but reduces token usage by masking the content of tool returns older than `keep_last`.
@@ -23,7 +26,7 @@ class ObservationMaskingProcessor:
     message count.
 
     Usage:
-        agent = Agent('openai:gpt-5.2', history_processors=[ObservationMaskingProcessor()])
+        agent = Agent('openai:gpt-5.2', capabilities=[ObservationMaskingCapability()])
     """
 
     keep_last: int = 10
@@ -38,7 +41,18 @@ class ObservationMaskingProcessor:
     Only used when the model's context window size is known.
     """
 
-    async def __call__(self, ctx: RunContext[Any], messages: list[ModelMessage]) -> list[ModelMessage]:
+    async def before_model_request(
+        self,
+        ctx: RunContext[AgentDepsT],
+        *,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings,
+        model_request_parameters: ModelRequestParameters,
+    ) -> tuple[list[ModelMessage], ModelSettings, ModelRequestParameters]:
+        messages = self._mask_messages(ctx, messages)
+        return messages, model_settings, model_request_parameters
+
+    def _mask_messages(self, ctx: RunContext[Any], messages: list[ModelMessage]) -> list[ModelMessage]:
         context_window = ctx.model.profile.context_window
         if not should_compact(
             messages, context_window=context_window, trigger_ratio=self.trigger_ratio, fallback_threshold=self.keep_last

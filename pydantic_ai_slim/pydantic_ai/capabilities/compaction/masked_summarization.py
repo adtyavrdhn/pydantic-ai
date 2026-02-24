@@ -1,4 +1,4 @@
-"""History processor that summarizes old messages using an LLM."""
+"""Capability that masks tool returns then summarizes old messages using an LLM."""
 
 from __future__ import annotations
 
@@ -6,15 +6,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic_ai import Agent
-from pydantic_ai._run_context import RunContext
-from pydantic_ai.compaction._trigger import should_compact
-from pydantic_ai.compaction.masking import ObservationMaskingProcessor
-from pydantic_ai.compaction.utils import format_messages
+from pydantic_ai.capabilities.compaction._trigger import should_compact
+from pydantic_ai.capabilities.compaction.masking import ObservationMaskingCapability
+from pydantic_ai.capabilities.compaction.utils import format_messages
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     SystemPromptPart,
 )
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import AgentDepsT, RunContext
 
 DEFAULT_SUMMARY_PROMPT = """\
 Summarize the following conversation concisely, preserving key facts, decisions, \
@@ -27,8 +29,8 @@ Conversation:
 
 
 @dataclass(kw_only=True)
-class MaskedSummarizationProcessor(ObservationMaskingProcessor):
-    """A history processor that summarizes old messages using a separate LLM call.
+class MaskedSummarizationCapability(ObservationMaskingCapability[AgentDepsT]):
+    """A capability that masks tool returns then summarizes old messages using a separate LLM call.
 
     When context window utilization exceeds `trigger_ratio` (or message count exceeds
     `trigger_threshold` when context window is unknown), messages older than `keep_last`
@@ -38,7 +40,7 @@ class MaskedSummarizationProcessor(ObservationMaskingProcessor):
     Usage:
         agent = Agent(
             'openai:gpt-5.2',
-            history_processors=[SummarizationProcessor(model='openai:gpt-4.1-mini')],
+            capabilities=[MaskedSummarizationCapability(agent=Agent('openai:gpt-4.1-mini'))],
         )
     """
 
@@ -54,8 +56,21 @@ class MaskedSummarizationProcessor(ObservationMaskingProcessor):
     summary_prompt: str = DEFAULT_SUMMARY_PROMPT
     """Prompt template for the summarization model. Must contain {conversation}."""
 
-    async def __call__(self, ctx: RunContext[Any], messages: list[ModelMessage]) -> list[ModelMessage]:
-        messages = await super().__call__(ctx, messages)
+    async def before_model_request(
+        self,
+        ctx: RunContext[AgentDepsT],
+        *,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings,
+        model_request_parameters: ModelRequestParameters,
+    ) -> tuple[list[ModelMessage], ModelSettings, ModelRequestParameters]:
+        # First mask tool returns
+        messages = self._mask_messages(ctx, messages)
+        # Then summarize if needed
+        messages = await self._summarize_messages(ctx, messages)
+        return messages, model_settings, model_request_parameters
+
+    async def _summarize_messages(self, ctx: RunContext[Any], messages: list[ModelMessage]) -> list[ModelMessage]:
         context_window = ctx.model.profile.context_window
         if not should_compact(
             messages,

@@ -4,7 +4,7 @@ This script demonstrates the new features on the `jack` branch:
 - ExecutionEnvironmentToolset + LocalEnvironment (shell, file reading, grep, glob)
 - web_fetch_tool (fetching web pages with SSRF protection)
 - TodoToolset (structured task tracking for the review)
-- ObservationMaskingProcessor (compaction for long conversations)
+- ObservationMaskingCapability (compaction for long conversations)
 - PermissionRule + permission_hook (controlling which shell commands are allowed)
 
 Usage:
@@ -30,7 +30,7 @@ from pydantic_ai._permissions import PermissionRule, ToolPermission, permission_
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.common_tools.todos import TodoToolset
 from pydantic_ai.common_tools.web_fetch import web_fetch_tool
-from pydantic_ai.compaction import ObservationMaskingProcessor
+from pydantic_ai.capabilities.compaction import ObservationMaskingCapability
 from pydantic_ai.environments.local import LocalEnvironment
 from pydantic_ai.toolsets.execution_environment import ExecutionEnvironmentToolset
 
@@ -135,9 +135,9 @@ def build_review_agent(pr_number: int, repo: str) -> tuple[Agent, LocalEnvironme
             # Web fetching with SSRF protection
             web_fetch_tool(),
         ],
-        history_processors=[
+        capabilities=[
             # Compaction: mask old tool returns when approaching context limit
-            ObservationMaskingProcessor(keep_last=15, trigger_ratio=0.6),
+            ObservationMaskingCapability(keep_last=15, trigger_ratio=0.6),
         ],
         before_tool_call_hooks=[
             # Permission hook: only allow read-only shell commands, deny rm/git push/etc.

@@ -1,4 +1,4 @@
-"""Shared trigger logic for compaction processors."""
+"""Shared trigger logic for compaction capabilities."""
 
 from __future__ import annotations
 
