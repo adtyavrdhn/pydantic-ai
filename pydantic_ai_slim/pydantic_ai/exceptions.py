@@ -20,6 +20,7 @@ __all__ = (
     'ModelRetry',
     'CallDeferred',
     'ApprovalRequired',
+    'ToolCallDenied',
     'UserError',
     'AgentRunError',
     'UnexpectedModelBehavior',
@@ -99,6 +100,24 @@ class ApprovalRequired(Exception):
     def __init__(self, metadata: dict[str, Any] | None = None):
         self.metadata = metadata
         super().__init__()
+
+
+class ToolCallDenied(Exception):
+    """Exception to raise when a tool call is denied inline.
+
+    Unlike `ApprovalRequired` which defers the call for human approval,
+    this immediately denies the call and returns the message to the model
+    as a `ToolReturnPart`.
+
+    Args:
+        message: The denial message to return to the model.
+    """
+
+    message: str
+
+    def __init__(self, message: str = 'The tool call was denied.'):
+        self.message = message
+        super().__init__(message)
 
 
 class UserError(RuntimeError):

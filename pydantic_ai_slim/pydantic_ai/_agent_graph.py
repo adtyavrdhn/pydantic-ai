@@ -1347,6 +1347,12 @@ async def _call_tool(
             raise ToolRetryError(tool_call_result)
         else:
             tool_result = tool_call_result
+    except exceptions.ToolCallDenied as e:
+        return _messages.ToolReturnPart(
+            tool_name=tool_call.tool_name,
+            content=e.message,
+            tool_call_id=tool_call.tool_call_id,
+        ), None
     except ToolRetryError as e:
         return e.tool_retry, None
 

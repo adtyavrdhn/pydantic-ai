@@ -17,7 +17,7 @@ from ._instrumentation import InstrumentationNames
 from ._run_context import AgentDepsT, RunContext
 from .exceptions import ModelRetry, ToolRetryError, UnexpectedModelBehavior
 from .messages import ToolCallPart
-from .tools import ToolDefinition
+from .tools import AfterToolCallHook, BeforeToolCallHook, ToolDefinition
 from .toolsets.abstract import AbstractToolset, ToolsetTool
 from .usage import RunUsage
 
@@ -66,6 +66,10 @@ class ToolManager(Generic[AgentDepsT]):
     """Names of tools that failed in this run step."""
     default_max_retries: int = 1
     """Default number of times to retry a tool"""
+    before_tool_call_hooks: list[BeforeToolCallHook[AgentDepsT]] = field(default_factory=list[BeforeToolCallHook[Any]])
+    """Hooks called before each tool execution."""
+    after_tool_call_hooks: list[AfterToolCallHook[AgentDepsT]] = field(default_factory=list[AfterToolCallHook[Any]])
+    """Hooks called after each tool execution."""
 
     @classmethod
     @contextmanager
@@ -109,6 +113,8 @@ class ToolManager(Generic[AgentDepsT]):
             ctx=ctx,
             tools=await self.toolset.get_tools(ctx),
             default_max_retries=self.default_max_retries,
+            before_tool_call_hooks=self.before_tool_call_hooks,
+            after_tool_call_hooks=self.after_tool_call_hooks,
         )
 
     @property
