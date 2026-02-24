@@ -42,6 +42,7 @@ from .exceptions import (
     ModelAPIError,
     ModelHTTPError,
     ModelRetry,
+    ToolCallDenied,
     UnexpectedModelBehavior,
     UsageLimitExceeded,
     UserError,
@@ -111,7 +112,17 @@ from .profiles import (
 )
 from .run import AgentRun, AgentRunResult, AgentRunResultEvent
 from .settings import ModelSettings
-from .tools import DeferredToolRequests, DeferredToolResults, RunContext, Tool, ToolApproved, ToolDefinition, ToolDenied
+from .tools import (
+    AfterToolCallHook,
+    BeforeToolCallHook,
+    DeferredToolRequests,
+    DeferredToolResults,
+    RunContext,
+    Tool,
+    ToolApproved,
+    ToolDefinition,
+    ToolDenied,
+)
 from .toolsets import (
     AbstractToolset,
     ApprovalRequiredToolset,
@@ -154,6 +165,7 @@ __all__ = (
     'AgentRunError',
     'CallDeferred',
     'ApprovalRequired',
+    'ToolCallDenied',
     'ConcurrencyLimitExceeded',
     'ModelRetry',
     'ModelAPIError',
@@ -224,6 +236,8 @@ __all__ = (
     # tools
     'Tool',
     'ToolDefinition',
+    'BeforeToolCallHook',
+    'AfterToolCallHook',
     'RunContext',
     'DeferredToolRequests',
     'DeferredToolResults',
