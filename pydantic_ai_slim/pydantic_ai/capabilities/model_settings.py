@@ -27,3 +27,5 @@ class ModelSettingsCapability(AbstractCapability[AgentDepsT]):
 
 
 CAPABILITY_TYPES['model_settings'] = ModelSettingsCapability
+
+ModelSettingsConfig = ModelSettings

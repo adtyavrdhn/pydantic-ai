@@ -41,7 +41,7 @@ from .._agent_graph import (
 from .._output import OutputToolset
 from .._tool_manager import ParallelExecutionMode, ToolManager
 from ..builtin_tools import AbstractBuiltinTool
-from ..capabilities.abstract import AbstractCapability, CombinedCapability, HistoryProcessorCapability
+from ..capabilities import AbstractCapability, CombinedCapability, HistoryProcessorCapability
 from ..models.instrumented import InstrumentationSettings, InstrumentedModel, instrument_model
 from ..output import OutputDataT, OutputSpec
 from ..run import AgentRun, AgentRunResult

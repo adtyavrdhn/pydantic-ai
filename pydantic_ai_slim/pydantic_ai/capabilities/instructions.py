@@ -13,4 +13,6 @@ class Instructions(AbstractCapability[AgentDepsT]):
         return self.instructions
 
 
+InstructionsConfig = str
+
 CAPABILITY_TYPES['instructions'] = Instructions

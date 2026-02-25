@@ -22,3 +22,5 @@ class Thinking(ModelSettingsCapability[AgentDepsT]):
 
 
 CAPABILITY_TYPES['thinking'] = Thinking
+
+ThinkingConfig = None
