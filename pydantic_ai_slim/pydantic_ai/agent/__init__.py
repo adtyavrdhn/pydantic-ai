@@ -244,6 +244,8 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
         instrument: InstrumentationSettings | bool | None = None,
         metadata: AgentMetadata[AgentDepsT] | None = None,
         history_processors: Sequence[HistoryProcessor[AgentDepsT]] | None = None,
+        before_tool_call_hooks: Sequence[BeforeToolCallHook[AgentDepsT]] | None = None,
+        after_tool_call_hooks: Sequence[AfterToolCallHook[AgentDepsT]] | None = None,
         event_stream_handler: EventStreamHandler[AgentDepsT] | None = None,
         tool_timeout: float | None = None,
         max_concurrency: _concurrency.AnyConcurrencyLimit = None,
