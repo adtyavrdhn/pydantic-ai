@@ -125,17 +125,7 @@ def build_review_agent(pr_number: int, repo: str) -> tuple[Agent, LocalEnvironme
     agent = Agent(
         'gateway/anthropic:claude-sonnet-4-20250514',
         instructions=REVIEW_INSTRUCTIONS.format(pr_number=pr_number, repo=repo),
-        # toolsets=[
-        #     # Shell + file system tools backed by LocalEnvironment
-        #     ExecutionEnvironmentToolset(
-        #         env,
-        #         include=['shell', 'read_file', 'glob', 'grep'],
-        #     ),
-        #     # Structured task tracking
-        #     TodoToolset(),
-        # ],
         tools=[
-            # Web fetching with SSRF protection
             web_fetch_tool(),
         ],
         capabilities=[
