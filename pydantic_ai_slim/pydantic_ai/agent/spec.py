@@ -1,26 +1,23 @@
-from typing import TypedDict
+"""Agent specification for constructing agents from YAML/JSON/dict specs."""
 
-from pydantic import JsonValue
+from __future__ import annotations
 
-ModelID = str  # needs to have :, validate against KnownModelName?
+from pydantic import BaseModel
 
-# class InstructionsCapabilitySpec(TypedDict):
-#     instructions: str
+from pydantic_ai._spec import NamedSpec
 
-# class ThinkingCapabilitySpecWithLevel(TypedDict):
-#     thinking: Literal['low', 'medium', 'high']
+CapabilitySpec = NamedSpec
+"""The specification of a capability to be constructed.
 
-# ThinkingCapabilitySpec = Literal['thinking'] | ThinkingCapabilitySpecWithLevel
-
-# execution_environment_capability_spec = TypedDict(
-#     'execution_environment_capability_spec',
-#     {'execution_environment': ExecutionEnvironmentSpec},  # pyright: ignore[reportInvalidTypeForm]
-# )
-
-# CapabilitySpec = InstructionsCapabilitySpec | ThinkingCapabilitySpec | execution_environment_capability_spec
+Supports the same short forms as `EvaluatorSpec`:
+* ``'MyCapability'`` — no arguments
+* ``{'MyCapability': single_arg}`` — a single positional argument
+* ``{'MyCapability': {k1: v1, k2: v2}}`` — keyword arguments
+"""
 
 
-class AgentSpec(TypedDict):
-    model: ModelID
-    # capabilities: list[CapabilitySpec]
-    output: JsonValue
+class AgentSpec(BaseModel):
+    """Specification for constructing an Agent from a dict/YAML/JSON."""
+
+    model: str
+    capabilities: list[CapabilitySpec] = []

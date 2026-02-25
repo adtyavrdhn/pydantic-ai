@@ -1,7 +1,9 @@
-from dataclasses import dataclass, field
-from typing import Literal, overload
+from __future__ import annotations
 
-from pydantic_ai.capabilities.abstract import CAPABILITY_TYPES, AbstractCapability
+from dataclasses import dataclass, field
+from typing import Any, Literal, overload
+
+from pydantic_ai.capabilities.abstract import AbstractCapability
 from pydantic_ai.environments import EnvToolName, ExecutionEnvironment as BaseExecutionEnvironment
 from pydantic_ai.environments.local import LocalEnvironment
 from pydantic_ai.environments.memory import MemoryEnvironment
@@ -54,17 +56,16 @@ class ExecutionEnvironment(AbstractCapability[AgentDepsT]):
     def get_toolset(self) -> AbstractToolset[AgentDepsT] | None:
         return self.toolset
 
-
-CAPABILITY_TYPES['execution_environment'] = ExecutionEnvironment
-
-EnvID = Literal['local', 'docker'] | BaseExecutionEnvironment
-
-
-@dataclass
-class ExecutionEnvironmentConfig:
-    environment: EnvID
-    include: list[EnvToolName]
-    exclude: list[EnvToolName]
-
-
-ExecutionEnvironmentCapabilitySpec = EnvID | ExecutionEnvironmentConfig
+    @classmethod
+    def from_spec(
+        cls,
+        *args: Any,
+        environment: Literal['local', 'memory'] | None = None,
+        include: list[EnvToolName] | None = None,
+        exclude: list[EnvToolName] | None = None,
+        **kwargs: Any,
+    ) -> ExecutionEnvironment[Any]:
+        """Create from spec. Accepts string environment names ('local', 'memory')."""
+        if args:
+            return cls(environment=args[0], **kwargs)
+        return cls(environment=environment, include=include, exclude=exclude, **kwargs)  # type: ignore[arg-type]

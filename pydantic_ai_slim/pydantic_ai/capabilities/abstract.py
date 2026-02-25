@@ -13,19 +13,25 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT, BuiltinToolFunc, RunContext
 from pydantic_ai.toolsets import AbstractToolset
 
-CAPABILITY_TYPES: dict[str, type[AbstractCapability[Any]]] = {}
-"""Registry of all capabilities.
-"""
-
 
 @dataclass
 class AbstractCapability(ABC, Generic[AgentDepsT]):
-    # catalogue metadata
+    @classmethod
+    def get_serialization_name(cls) -> str | None:
+        """Return the name used for spec serialization (CamelCase class name by default).
 
-    # config object? from yaml, or injected at runtime?
+        Return None to opt out of spec-based construction.
+        """
+        return cls.__name__
 
-    # toolset.get_instructions: https://github.com/pydantic/pydantic-ai/pull/4123
-    # should this take existing instructions?
+    @classmethod
+    def from_spec(cls, *args: Any, **kwargs: Any) -> AbstractCapability[Any]:
+        """Create from spec arguments. Default: ``cls(*args, **kwargs)``.
+
+        Override when ``__init__`` takes non-serializable types.
+        """
+        return cls(*args, **kwargs)
+
     def get_instructions(self) -> _instructions.Instructions[AgentDepsT] | None:
         # TODO: Use only the pre-request-hook based route instead of ctx.deps.get_instructions. How does override work? Just replace field instead of append?
         return None
