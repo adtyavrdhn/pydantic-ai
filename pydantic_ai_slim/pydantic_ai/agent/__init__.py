@@ -49,6 +49,7 @@ from ..settings import ModelSettings, merge_model_settings
 from ..tools import (
     AfterToolCallHook,
     AgentDepsT,
+    BeforeToolCallHook,
     BuiltinToolFunc,
     DeferredToolResults,
     DocstringFormat,
