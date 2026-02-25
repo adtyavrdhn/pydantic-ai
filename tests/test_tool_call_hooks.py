@@ -88,9 +88,7 @@ async def test_before_hook_raising_approval_required():
 
 
 async def test_before_hook_returning_dict_modifies_args():
-    async def modify_hook(
-        ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def modify_hook(ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any]) -> dict[str, Any]:
         return {'a': 10, 'b': 20}
 
     tm = await _make_tool_manager(before_hooks=[modify_hook])
@@ -138,14 +136,10 @@ async def test_multiple_before_hooks_first_deny_wins():
 async def test_before_hook_dict_chaining():
     """Multiple hooks that modify args: each sees the args from the previous hook."""
 
-    async def double_a(
-        ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def double_a(ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any]) -> dict[str, Any]:
         return {**tool_args, 'a': tool_args['a'] * 2}
 
-    async def double_b(
-        ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def double_b(ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any]) -> dict[str, Any]:
         return {**tool_args, 'b': tool_args['b'] * 2}
 
     tm = await _make_tool_manager(before_hooks=[double_a, double_b])
@@ -169,9 +163,7 @@ async def test_after_hook_can_transform_result():
 
 
 async def test_multiple_after_hooks_chain():
-    async def add_ten(
-        ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any], result: Any
-    ) -> Any:
+    async def add_ten(ctx: RunContext[Any], tool_def: ToolDefinition, tool_args: dict[str, Any], result: Any) -> Any:
         return result + 10
 
     async def double_result(

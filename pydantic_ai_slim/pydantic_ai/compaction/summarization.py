@@ -29,8 +29,7 @@ Conversation:
 class SummarizationProcessor:
     """A history processor that summarizes old messages using a separate LLM call.
 
-    When context window utilization exceeds `trigger_ratio` (or message count exceeds
-    `trigger_threshold` when context window is unknown), messages older than `keep_last`
+    When context window utilization exceeds `trigger_ratio`, messages older than `keep_last`
     are summarized and replaced with a single system prompt containing the summary.
 
     Usage:
@@ -60,12 +59,7 @@ class SummarizationProcessor:
 
     async def __call__(self, ctx: RunContext[Any], messages: list[ModelMessage]) -> list[ModelMessage]:
         context_window = ctx.model.profile.context_window
-        if not should_compact(
-            messages,
-            context_window=context_window,
-            trigger_ratio=self.trigger_ratio,
-            fallback_threshold=self.trigger_threshold,
-        ):
+        if not should_compact(ctx.usage, context_window=context_window, trigger_ratio=self.trigger_ratio):
             return messages
 
         cutoff = len(messages) - self.keep_last

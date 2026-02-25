@@ -27,11 +27,13 @@ logfire.configure()
 
 from pydantic_ai import Agent
 from pydantic_ai._permissions import PermissionRule, ToolPermission, permission_hook
-from pydantic_ai.tools import ToolDefinition
+from pydantic_ai.capabilities.compaction import ObservationMaskingCapability
+from pydantic_ai.capabilities.compaction._trigger import should_compact
+from pydantic_ai.messages import ModelRequest, ToolReturnPart
 from pydantic_ai.common_tools.todos import TodoToolset
 from pydantic_ai.common_tools.web_fetch import web_fetch_tool
-from pydantic_ai.capabilities.compaction import ObservationMaskingCapability
 from pydantic_ai.environments.local import LocalEnvironment
+from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets.execution_environment import ExecutionEnvironmentToolset
 
 REVIEW_INSTRUCTIONS = """\
@@ -115,6 +117,35 @@ def _shell_permission_key(tool_def: ToolDefinition, tool_args: dict[str, Any]) -
     return tool_def.name
 
 
+class DebugObservationMaskingCapability(ObservationMaskingCapability):
+    """ObservationMaskingCapability with debug logging."""
+
+    async def before_model_request(self, ctx, *, messages, model_settings, model_request_parameters):
+        context_window = ctx.model.profile.context_window
+        total_tokens = ctx.usage.total_tokens
+        triggered = should_compact(
+            ctx.usage, context_window=context_window,
+            trigger_ratio=self.trigger_ratio,
+        )
+        tool_returns = sum(
+            1 for m in messages if isinstance(m, ModelRequest)
+            for p in m.parts if isinstance(p, ToolReturnPart)
+        )
+        compacted_count = sum(
+            1 for m in messages if isinstance(m, ModelRequest)
+            for p in m.parts if isinstance(p, ToolReturnPart) and p.content == self.placeholder
+        )
+        print(
+            f'[COMPACTION] msgs={len(messages)} cw={context_window} '
+            f'total_tok={total_tokens} ratio={self.trigger_ratio} '
+            f'triggered={triggered} tool_returns={tool_returns} compacted={compacted_count}'
+        )
+        return await super().before_model_request(
+            ctx, messages=messages, model_settings=model_settings,
+            model_request_parameters=model_request_parameters,
+        )
+
+
 def build_review_agent(pr_number: int, repo: str) -> tuple[Agent, LocalEnvironment]:
     """Build the review agent with all the new features composed together."""
     env = LocalEnvironment(root_dir=Path.cwd())
@@ -137,7 +168,7 @@ def build_review_agent(pr_number: int, repo: str) -> tuple[Agent, LocalEnvironme
         ],
         capabilities=[
             # Compaction: mask old tool returns when approaching context limit
-            ObservationMaskingCapability(keep_last=15, trigger_ratio=0.6),
+            DebugObservationMaskingCapability(trigger_ratio=0.01),
         ],
         before_tool_call_hooks=[
             # Permission hook: only allow read-only shell commands, deny rm/git push/etc.

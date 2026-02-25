@@ -437,6 +437,9 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
 
         self._event_stream_handler = event_stream_handler
 
+        self._before_tool_call_hooks = list(before_tool_call_hooks or [])
+        self._after_tool_call_hooks = list(after_tool_call_hooks or [])
+
         self._concurrency_limiter = _concurrency.normalize_to_limiter(max_concurrency)
 
         self._override_name: ContextVar[_utils.Option[str]] = ContextVar('_override_name', default=None)

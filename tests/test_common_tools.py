@@ -20,9 +20,7 @@ def _text_response(body: str, content_type: str = 'text/plain', status_code: int
     return httpx.Response(status_code, text=body, headers={'content-type': content_type})
 
 
-def _make_tool(
-    handler: _Handler, *, max_content_length: int = 50_000, allow_private_urls: bool = True
-) -> WebFetchTool:
+def _make_tool(handler: _Handler, *, max_content_length: int = 50_000, allow_private_urls: bool = True) -> WebFetchTool:
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return WebFetchTool(client=client, max_content_length=max_content_length, allow_private_urls=allow_private_urls)
 

@@ -21,15 +21,14 @@ class ObservationMaskingCapability(AbstractCapability[AgentDepsT]):
     Keeps the structure of the conversation intact (tool call/return pairs are preserved)
     but reduces token usage by masking the content of tool returns older than `keep_last`.
 
-    When the model's context window is known, compaction triggers based on context window
-    utilization (input tokens / context window > trigger_ratio). Otherwise, falls back to
-    message count.
+    Compaction triggers based on cumulative token usage relative to the context window
+    (total_tokens / context_window > trigger_ratio), using the same accounting as UsageLimits.
 
     Usage:
         agent = Agent('openai:gpt-5.2', capabilities=[ObservationMaskingCapability()])
     """
 
-    keep_last: int = 10
+    keep_last: int = 1
     """Number of recent messages to leave untouched."""
 
     placeholder: str = '[compacted]'
@@ -54,18 +53,36 @@ class ObservationMaskingCapability(AbstractCapability[AgentDepsT]):
 
     def _mask_messages(self, ctx: RunContext[Any], messages: list[ModelMessage]) -> list[ModelMessage]:
         context_window = ctx.model.profile.context_window
-        if not should_compact(
-            messages, context_window=context_window, trigger_ratio=self.trigger_ratio, fallback_threshold=self.keep_last
-        ):
+        if not should_compact(ctx.usage, context_window=context_window, trigger_ratio=self.trigger_ratio):
             return messages
 
         cutoff = len(messages) - self.keep_last
         older = copy.deepcopy(messages[:cutoff])
 
+        masked_count = 0
         for message in older:
             if isinstance(message, ModelRequest):
                 for part in message.parts:
                     if isinstance(part, (ToolReturnPart, RetryPromptPart)):
                         part.content = self.placeholder
+                        masked_count += 1
+
+        with self.span(
+            ctx,
+            'capability compaction/masking',
+            {
+                'pydantic_ai.capability': 'compaction/masking',
+                'pydantic_ai.compaction.trigger_ratio': self.trigger_ratio,
+                'pydantic_ai.compaction.context_utilization': ctx.usage.total_tokens / context_window
+                if context_window
+                else 0,
+                'pydantic_ai.compaction.total_tokens': ctx.usage.total_tokens,
+                'pydantic_ai.compaction.context_window': context_window or 0,
+                'pydantic_ai.compaction.messages_total': len(messages),
+                'pydantic_ai.compaction.messages_kept': len(messages) - cutoff,
+                'pydantic_ai.compaction.tool_returns_masked': masked_count,
+            },
+        ):
+            pass
 
         return [*older, *messages[cutoff:]]

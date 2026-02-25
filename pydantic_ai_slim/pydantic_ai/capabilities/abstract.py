@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from abc import ABC
 from collections.abc import Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Generic
+from typing import Any, Generic, Iterator
 
+from opentelemetry.trace import Span
 from pydantic_ai import _instructions
 from pydantic_ai.builtin_tools import AbstractBuiltinTool
 from pydantic_ai.messages import ModelMessage, ModelResponse
@@ -12,6 +14,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT, BuiltinToolFunc, RunContext
 from pydantic_ai.toolsets import AbstractToolset
+from pydantic_evals.otel.span_tree import AttributeValue
 
 CAPABILITY_TYPES: dict[str, type[AbstractCapability[Any]]] = {}
 """Registry of all capabilities.
@@ -68,6 +71,13 @@ class AbstractCapability(ABC, Generic[AgentDepsT]):
         response: ModelResponse,
     ) -> ModelResponse:
         return response
+
+    @contextmanager
+    def span(
+        self, ctx: RunContext[AgentDepsT], name: str, attributes: dict[str, AttributeValue] | None = None
+    ) -> Iterator[Span]:
+        with ctx.tracer.start_as_current_span(name, attributes=attributes or {}) as span:
+            yield span
 
     # aenter, aexit
     # if this handles the toolset lifecycle, should this always call super()?

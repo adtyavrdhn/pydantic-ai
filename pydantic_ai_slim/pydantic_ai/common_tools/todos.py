@@ -205,9 +205,7 @@ class TodoToolset(FunctionToolset[Any]):
                     if await self._storage.get(dep_id) is None:
                         raise ModelRetry(f'Dependency todo {dep_id} does not exist.')
                 if cycle_dep := await self._would_create_cycle(todo_id, depends_on):
-                    raise ModelRetry(
-                        f'Adding dependency on todo {cycle_dep} would create a cycle.'
-                    )
+                    raise ModelRetry(f'Adding dependency on todo {cycle_dep} would create a cycle.')
                 todo.depends_on = depends_on
 
             if content is not None:

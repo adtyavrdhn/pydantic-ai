@@ -169,9 +169,7 @@ class TestUpdateTodo:
         await storage.create('Original', 'Doing original', [])
         toolset = TodoToolset(storage=storage)
         tm = await _make_tool_manager(toolset)
-        result = await tm.handle_call(
-            ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'content': 'Revised'})
-        )
+        result = await tm.handle_call(ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'content': 'Revised'}))
         assert result == 'Updated todo 1.'
         updated = await storage.get(1)
         assert updated is not None
@@ -189,9 +187,7 @@ class TestUpdateTodo:
         toolset = TodoToolset(storage=storage)
         tm = await _make_tool_manager(toolset)
         with pytest.raises(ToolRetryError, match='cannot depend on itself'):
-            await tm.handle_call(
-                ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [1]})
-            )
+            await tm.handle_call(ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [1]}))
 
     async def test_direct_cycle(self):
         storage = InMemoryTodoStorage()
@@ -201,9 +197,7 @@ class TestUpdateTodo:
         tm = await _make_tool_manager(toolset)
         # Try to make A depend on B — would create A -> B -> A cycle
         with pytest.raises(ToolRetryError, match='would create a cycle'):
-            await tm.handle_call(
-                ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [2]})
-            )
+            await tm.handle_call(ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [2]}))
 
     async def test_transitive_cycle(self):
         storage = InMemoryTodoStorage()
@@ -214,9 +208,7 @@ class TestUpdateTodo:
         tm = await _make_tool_manager(toolset)
         # Try to make A depend on C — would create A -> C -> B -> A cycle
         with pytest.raises(ToolRetryError, match='would create a cycle'):
-            await tm.handle_call(
-                ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [3]})
-            )
+            await tm.handle_call(ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [3]}))
 
     async def test_invalid_dep(self):
         storage = InMemoryTodoStorage()
@@ -224,9 +216,7 @@ class TestUpdateTodo:
         toolset = TodoToolset(storage=storage)
         tm = await _make_tool_manager(toolset)
         with pytest.raises(ToolRetryError, match='does not exist'):
-            await tm.handle_call(
-                ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [999]})
-            )
+            await tm.handle_call(ToolCallPart(tool_name='update_todo', args={'todo_id': 1, 'depends_on': [999]}))
 
 
 class TestCompleteTodo:

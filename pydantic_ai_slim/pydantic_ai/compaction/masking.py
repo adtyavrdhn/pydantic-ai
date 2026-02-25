@@ -18,9 +18,8 @@ class ObservationMaskingProcessor:
     Keeps the structure of the conversation intact (tool call/return pairs are preserved)
     but reduces token usage by masking the content of tool returns older than `keep_last`.
 
-    When the model's context window is known, compaction triggers based on context window
-    utilization (input tokens / context window > trigger_ratio). Otherwise, falls back to
-    message count.
+    Compaction triggers based on cumulative token usage relative to the context window
+    (total_tokens / context_window > trigger_ratio), using the same accounting as UsageLimits.
 
     Usage:
         agent = Agent('openai:gpt-5.2', history_processors=[ObservationMaskingProcessor()])
@@ -40,9 +39,7 @@ class ObservationMaskingProcessor:
 
     async def __call__(self, ctx: RunContext[Any], messages: list[ModelMessage]) -> list[ModelMessage]:
         context_window = ctx.model.profile.context_window
-        if not should_compact(
-            messages, context_window=context_window, trigger_ratio=self.trigger_ratio, fallback_threshold=self.keep_last
-        ):
+        if not should_compact(ctx.usage, context_window=context_window, trigger_ratio=self.trigger_ratio):
             return messages
 
         cutoff = len(messages) - self.keep_last

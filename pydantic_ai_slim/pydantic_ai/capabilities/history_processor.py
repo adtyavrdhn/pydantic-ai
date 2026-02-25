@@ -51,4 +51,5 @@ class HistoryProcessorCapability(AbstractCapability[AgentDepsT]):
 
         return messages, model_settings, model_request_parameters
 
+
 CAPABILITY_TYPES['history_processor'] = HistoryProcessorCapability
