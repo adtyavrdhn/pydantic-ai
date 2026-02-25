@@ -8,7 +8,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT, RunContext
 
-from .abstract import CAPABILITY_TYPES, AbstractCapability
+from .abstract import AbstractCapability
 
 
 @dataclass
@@ -52,4 +52,6 @@ class HistoryProcessorCapability(AbstractCapability[AgentDepsT]):
         return messages, model_settings, model_request_parameters
 
 
-CAPABILITY_TYPES['history_processor'] = HistoryProcessorCapability
+    @classmethod
+    def get_serialization_name(cls) -> str | None:
+        return None

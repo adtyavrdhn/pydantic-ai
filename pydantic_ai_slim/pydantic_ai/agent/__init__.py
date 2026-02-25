@@ -41,9 +41,7 @@ from .._agent_graph import (
 from .._output import OutputToolset
 from .._tool_manager import ParallelExecutionMode, ToolManager
 from ..builtin_tools import AbstractBuiltinTool
-from ..capabilities.abstract import AbstractCapability
-from ..capabilities.combined import CombinedCapability
-from ..capabilities.history_processor import HistoryProcessorCapability
+from ..capabilities import AbstractCapability, CombinedCapability, HistoryProcessorCapability
 from ..models.instrumented import InstrumentationSettings, InstrumentedModel, instrument_model
 from ..output import OutputDataT, OutputSpec
 from ..run import AgentRun, AgentRunResult
@@ -88,6 +86,7 @@ if TYPE_CHECKING:
     from ..builtin_tools import AbstractBuiltinTool
     from ..mcp import MCPServer
     from ..ui._web import ModelsParam
+    from .spec import AgentSpec
 
 __all__ = (
     'Agent',
@@ -463,6 +462,51 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
         self._enter_lock = Lock()
         self._entered_count = 0
         self._exit_stack = None
+
+    @classmethod
+    def from_spec(
+        cls,
+        spec: dict[str, Any] | AgentSpec,
+        *,
+        custom_capability_types: Sequence[type[AbstractCapability[Any]]] = (),
+    ) -> Agent[None, str]:
+        """Construct an Agent from a spec dict or `AgentSpec`.
+
+        This allows defining agents declaratively in YAML/JSON/dict form.
+
+        Args:
+            spec: The agent specification, either a dict or an `AgentSpec` instance.
+            custom_capability_types: Additional capability classes to make available
+                beyond the built-in defaults.
+
+        Returns:
+            A new Agent instance.
+        """
+        from pydantic_ai._spec import build_registry, load_from_registry
+        from pydantic_ai.agent.spec import AgentSpec as _AgentSpecModel
+        from pydantic_ai.capabilities import DEFAULT_CAPABILITY_TYPES
+
+        validated_spec = _AgentSpecModel.model_validate(spec) if isinstance(spec, dict) else spec
+
+        registry = build_registry(
+            custom_types=custom_capability_types,
+            defaults=DEFAULT_CAPABILITY_TYPES,
+            get_name=lambda c: c.get_serialization_name(),
+            label='capability',
+        )
+
+        capabilities: list[AbstractCapability[Any]] = []
+        for cap_spec in validated_spec.capabilities:
+            capability = load_from_registry(
+                registry,
+                cap_spec,
+                label='capability',
+                custom_types_param='custom_capability_types',
+                instantiate=lambda c, args, kwargs: c.from_spec(*args, **kwargs),
+            )
+            capabilities.append(capability)
+
+        return Agent(model=validated_spec.model, capabilities=capabilities)
 
     @staticmethod
     def instrument_all(instrument: InstrumentationSettings | bool = True) -> None:
