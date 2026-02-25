@@ -15,7 +15,7 @@ from pydantic_ai.tools import AgentDepsT, RunContext
 
 
 @dataclass
-class ObservationMaskingCapability(AbstractCapability[AgentDepsT]):
+class ObservationMasking(AbstractCapability[AgentDepsT]):
     """A capability that replaces old tool return content with a placeholder.
 
     Keeps the structure of the conversation intact (tool call/return pairs are preserved)

@@ -29,7 +29,7 @@ Conversation:
 
 
 @dataclass
-class SummarizationCapability(AbstractCapability[AgentDepsT]):
+class Summarization(AbstractCapability[AgentDepsT]):
     """A capability that summarizes old messages using a separate LLM call.
 
     When context window utilization exceeds `trigger_ratio`, messages older than `keep_last`

@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic_ai import Agent
 from pydantic_ai.capabilities.compaction._trigger import should_compact
-from pydantic_ai.capabilities.compaction.masking import ObservationMaskingCapability
+from pydantic_ai.capabilities.compaction.masking import ObservationMasking
 from pydantic_ai.capabilities.compaction.utils import format_messages
 from pydantic_ai.messages import (
     ModelMessage,
@@ -29,7 +29,7 @@ Conversation:
 
 
 @dataclass(kw_only=True)
-class MaskedSummarizationCapability(ObservationMaskingCapability[AgentDepsT]):
+class MaskedSummarization(ObservationMasking[AgentDepsT]):
     """A capability that masks tool returns then summarizes old messages using a separate LLM call.
 
     When context window utilization exceeds `trigger_ratio`, messages older than `keep_last`
