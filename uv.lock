@@ -6748,6 +6748,7 @@ cli = [
     { name = "argcomplete" },
     { name = "prompt-toolkit" },
     { name = "pyperclip" },
+    { name = "pyyaml" },
     { name = "rich" },
 ]
 cohere = [
@@ -6899,6 +6900,7 @@ requires-dist = [
     { name = "pydantic-evals", marker = "extra == 'evals'", editable = "pydantic_evals" },
     { name = "pydantic-graph", editable = "pydantic_graph" },
     { name = "pyperclip", marker = "extra == 'cli'", specifier = ">=1.9.0" },
+    { name = "pyyaml", marker = "extra == 'cli'", specifier = ">=6.0.2" },
     { name = "requests", marker = "extra == 'vertexai'", specifier = ">=2.32.2" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=13" },
     { name = "sentence-transformers", marker = "python_full_version < '3.14' and extra == 'sentence-transformers'", specifier = ">=5.2.0" },
