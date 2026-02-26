@@ -1,11 +1,9 @@
 """Built-in capabilities for compacting conversation history."""
 
-from .masked_summarization import MaskedSummarizationCapability
-from .masking import ObservationMaskingCapability
-from .summarization import SummarizationCapability
+from .masked_summarization import MaskedSummarization
+from .masking import ObservationMasking
 
 __all__ = [
-    'MaskedSummarizationCapability',
-    'ObservationMaskingCapability',
-    'SummarizationCapability',
+    'MaskedSummarization',
+    'ObservationMasking',
 ]

@@ -23,7 +23,6 @@ from typing import Any
 
 import logfire
 
-from pydantic_ai.capabilities.compaction.masked_summarization import MaskedSummarization
 from pydantic_ai.capabilities.compaction.masking import ObservationMasking
 from pydantic_ai.capabilities.toolset import Toolset
 

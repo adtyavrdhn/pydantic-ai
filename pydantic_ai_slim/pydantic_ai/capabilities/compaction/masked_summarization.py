@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic_ai import Agent
 from pydantic_ai.capabilities.compaction._trigger import should_compact
 from pydantic_ai.capabilities.compaction.masking import ObservationMasking
 from pydantic_ai.capabilities.compaction.utils import format_messages
@@ -43,7 +42,6 @@ class MaskedSummarization(ObservationMasking[AgentDepsT]):
         )
     """
 
-    agent: Agent[None]
     """Agent to use for generating summaries. Typically a cheap/fast model."""
 
     keep_last: int = 10
@@ -78,7 +76,7 @@ class MaskedSummarization(ObservationMasking[AgentDepsT]):
 
         with self.span(
             ctx,
-            'capability compaction/masked_summarization',
+            'compacting',
             {
                 'pydantic_ai.capability': 'compaction/masked_summarization',
                 'pydantic_ai.compaction.trigger_ratio': self.trigger_ratio,
@@ -92,14 +90,19 @@ class MaskedSummarization(ObservationMasking[AgentDepsT]):
                 'pydantic_ai.compaction.messages_kept': len(recent),
             },
         ) as span:
-            conversation_text = format_messages(older)
-            prompt = self.summary_prompt.format(conversation=conversation_text)
-            result = await self.agent.run(prompt)
-            summary = result.output
+            pass
+            return messages
+            # conversation_text = format_messages(older)
+            # prompt = self.summary_prompt.format(conversation=conversation_text)
+            # from pydantic_ai import Agent
 
-            summary_message = ModelRequest(
-                parts=[SystemPromptPart(content=f'Summary of prior conversation:\n{summary}')]
-            )
-            output = [summary_message, *recent]
-            span.set_attribute('pydantic_ai.compaction.messages_after', len(output))
-            return output
+            # agent = Agent('gateway/anthropic:claude-sonnet-4-6')
+            # result = await agent.run(prompt)
+            # summary = result.output
+
+            # summary_message = ModelRequest(
+            #     parts=[SystemPromptPart(content=f'Summary of prior conversation:\n{summary}')]
+            # )
+            # output = [summary_message, *recent]
+            # span.set_attribute('pydantic_ai.compaction.messages_after', len(output))
+            # return output

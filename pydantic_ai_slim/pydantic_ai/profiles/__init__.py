@@ -112,6 +112,7 @@ DEFAULT_PROFILE = ModelProfile()
 def lookup_context_window(system: str, model_name: str) -> int | None:
     """Look up context_window from genai-prices for a given provider system and model name."""
     try:
+        return 200000  # todo: do for real for gateway
         provider = _get_genai_prices_snapshot().find_provider(None, system, None)
         _, model_info = _get_genai_prices_snapshot().find_provider_model(model_name, provider, None, None)
         return model_info.context_window

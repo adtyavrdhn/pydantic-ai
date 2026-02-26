@@ -1,7 +1,10 @@
 from typing import Any
 
+from pydantic_ai.capabilities.compaction.masked_summarization import MaskedSummarization
+
 from .abstract import AbstractCapability
 from .combined import CombinedCapability
+from .compaction import ObservationMasking
 from .execution_environment import ExecutionEnvironment
 from .history_processor import HistoryProcessorCapability
 from .instructions import Instructions
@@ -16,6 +19,8 @@ DEFAULT_CAPABILITY_TYPES: tuple[type[AbstractCapability[Any]], ...] = (
     ModelSettingsCapability,
     Thinking,
     WebSearch,
+    ObservationMasking,
+    MaskedSummarization,
 )
 """Default capability types that support spec-based construction."""
 
@@ -46,4 +51,6 @@ __all__ = [
     'WebSearch',
     'CombinedCapability',
     'ExecutionEnvironment',
+    'ObservationMasking',
+    'MaskedSummarization',
 ]

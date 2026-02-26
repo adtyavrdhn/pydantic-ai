@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic_ai import Agent
 from pydantic_ai.capabilities.abstract import AbstractCapability
 from pydantic_ai.capabilities.compaction._trigger import should_compact
 from pydantic_ai.capabilities.compaction.utils import format_messages
@@ -14,7 +13,7 @@ from pydantic_ai.messages import (
     ModelRequest,
     SystemPromptPart,
 )
-from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT, RunContext
 
@@ -42,8 +41,8 @@ class Summarization(AbstractCapability[AgentDepsT]):
         )
     """
 
-    agent: Agent[None]
-    """Agent to use for generating summaries. Typically a cheap/fast model."""
+    model: Model | str = 'gateway/anthropic:claude-sonnet-4-6'
+    """Model to use for generating summaries. Typically a cheap/fast model."""
 
     keep_last: int = 10
     """Number of recent messages to preserve unchanged."""
@@ -95,7 +94,10 @@ class Summarization(AbstractCapability[AgentDepsT]):
         ) as span:
             conversation_text = format_messages(older)
             prompt = self.summary_prompt.format(conversation=conversation_text)
-            result = await self.agent.run(prompt)
+            from pydantic_ai import Agent
+
+            agent = Agent(model=self.model)
+            result = await agent.run(prompt)
             summary = result.output
 
             summary_message = ModelRequest(

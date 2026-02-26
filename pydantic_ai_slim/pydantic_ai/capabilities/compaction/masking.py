@@ -34,7 +34,7 @@ class ObservationMasking(AbstractCapability[AgentDepsT]):
     placeholder: str = '[compacted]'
     """Replacement text for masked tool return content."""
 
-    trigger_ratio: float = 0.7
+    trigger_ratio: float = 0.01
     """Context window utilization ratio that triggers compaction.
 
     Only used when the model's context window size is known.
@@ -67,22 +67,22 @@ class ObservationMasking(AbstractCapability[AgentDepsT]):
                         part.content = self.placeholder
                         masked_count += 1
 
-        with self.span(
-            ctx,
-            'capability compaction/masking',
-            {
-                'pydantic_ai.capability': 'compaction/masking',
-                'pydantic_ai.compaction.trigger_ratio': self.trigger_ratio,
-                'pydantic_ai.compaction.context_utilization': ctx.usage.total_tokens / context_window
-                if context_window
-                else 0,
-                'pydantic_ai.compaction.total_tokens': ctx.usage.total_tokens,
-                'pydantic_ai.compaction.context_window': context_window or 0,
-                'pydantic_ai.compaction.messages_total': len(messages),
-                'pydantic_ai.compaction.messages_kept': len(messages) - cutoff,
-                'pydantic_ai.compaction.tool_returns_masked': masked_count,
-            },
-        ):
-            pass
+        # with self.span(
+        #     ctx,
+        #     'capability compaction/masking',
+        #     {
+        #         'pydantic_ai.capability': 'compaction/masking',
+        #         'pydantic_ai.compaction.trigger_ratio': self.trigger_ratio,
+        #         'pydantic_ai.compaction.context_utilization': ctx.usage.total_tokens / context_window
+        #         if context_window
+        #         else 0,
+        #         'pydantic_ai.compaction.total_tokens': ctx.usage.total_tokens,
+        #         'pydantic_ai.compaction.context_window': context_window or 0,
+        #         'pydantic_ai.compaction.messages_total': len(messages),
+        #         'pydantic_ai.compaction.messages_kept': len(messages) - cutoff,
+        #         'pydantic_ai.compaction.tool_returns_masked': masked_count,
+        #     },
+        # ):
+        #     pass
 
         return [*older, *messages[cutoff:]]
