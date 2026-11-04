@@ -12,22 +12,24 @@ permissions:
   actions: read
 jobs:
   leaveout:
-    name: ${{ matrix.run }}
+    name: ${{ matrix.run }} reader ${{ matrix.reader }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        run: [41862154630]
+        run: [41877115230]
+        reader: ['3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ci-cand-1
+          ref: ci-cand-2
           path: repo
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: false
+          python-version: ${{ matrix.reader }}
       - uses: actions/download-artifact@v4
         with:
           pattern: coverage-*
@@ -39,6 +41,7 @@ jobs:
         shell: bash
         env:
           RUN: ${{ matrix.run }}
+          READER: ${{ matrix.reader }}
         run: |
           ls -a data | sed 's/\.[A-Za-z0-9_]*\.[0-9]*\.[A-Za-z0-9]*$//' | sort | uniq -c
           cd repo
@@ -58,21 +61,18 @@ jobs:
             local t0=$SECONDS
             uv run --no-sync coverage combine -q > /dev/null
             local rc=0
-            uv run --no-sync coverage report --skip-covered --show-missing > "$GITHUB_WORKSPACE/out/$RUN-$name.txt" 2>&1 || rc=$?
-            echo "EXPCOV run=$RUN variant=$name kept=$kept rc=$rc seconds=$((SECONDS-t0)) $(tail -1 "$GITHUB_WORKSPACE/out/$RUN-$name.txt" | tr -s ' ')"
+            uv run --no-sync coverage report --skip-covered --show-missing > "$GITHUB_WORKSPACE/out/$RUN-$READER-$name.txt" 2>&1 || rc=$?
+            echo "EXPCOV run=$RUN variant=$name kept=$kept rc=$rc seconds=$((SECONDS-t0)) $(tail -1 "$GITHUB_WORKSPACE/out/$RUN-$READER-$name.txt" | tr -s ' ')"
             local sn=0
-            COVERAGE_FILE=.coverage/.coverage uv run --no-sync strict-no-cover > "$GITHUB_WORKSPACE/out/$RUN-$name-strict.txt" 2>&1 || sn=$?
+            COVERAGE_FILE=.coverage/.coverage uv run --no-sync strict-no-cover > "$GITHUB_WORKSPACE/out/$RUN-$READER-$name-strict.txt" 2>&1 || sn=$?
             echo "EXPCOV run=$RUN variant=$name strict_rc=$sn"
           }
+          python --version || uv run --no-sync python --version
           variant baseline ''
-          variant drop311all '^\.coverage\.3\.11-'
-          variant drop311allextras '^\.coverage\.3\.11-all-extras'
-          variant drop311durable '^\.coverage\.3\.11-durable'
-          variant drop312durable '^\.coverage\.3\.12-durable'
-          variant drop314lowest '^\.coverage\.3\.14-lowest'
+          variant drop311step '^\.coverage\.3\.11-'
           variant baselineagain ''
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: leaveout-${{ matrix.run }}
+          name: leaveout-${{ matrix.run }}-${{ matrix.reader }}
           path: out
