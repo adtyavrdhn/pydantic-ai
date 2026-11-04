@@ -54,4 +54,10 @@ jobs:
       - run: mkdir .coverage
       - name: run arm
         shell: bash
-        run: bash .github/exp/run_arm.sh
+        run: |
+          # Run against the exact upstream tree: tests read `.github/workflows/*`, so the harness must not change it.
+          mv .github/exp "$RUNNER_TEMP/exp"
+          git fetch --depth=1 https://github.com/pydantic/pydantic-ai.git 7d1d3f0191fd5d500b02e58dee2bf6d7adc1b967
+          git checkout --detach FETCH_HEAD
+          echo "EXPTREE $(git rev-parse HEAD) dirty=$(git status --porcelain | wc -l)"
+          bash "$RUNNER_TEMP/exp/run_arm.sh"
