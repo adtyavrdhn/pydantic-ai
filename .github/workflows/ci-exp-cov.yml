@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        run: [41835109343, 41770436900]
+        run: [41770436900, 41835109343, 41847441220, 40790679383]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,13 +55,14 @@ jobs:
             echo "EXPCOV run=$RUN variant=$name kept=$kept rc=$rc seconds=$((SECONDS-t0)) $(tail -1 "$GITHUB_WORKSPACE/out/$RUN-$name.txt" | tr -s ' ')"
           }
           variant baseline ''
-          variant drop311extras '^\.coverage\.3\.11-all-extras'
-          variant drop311durable '^\.coverage\.3\.11-durable'
           variant drop311all '^\.coverage\.3\.11-'
-          variant drop312durable '^\.coverage\.3\.12-durable'
-          variant dropalldurable311and312 '^\.coverage\.3\.1[12]-durable'
-          variant drop314lowest '^\.coverage\.3\.14-lowest'
-          variant drop311andlowest '^\.coverage\.(3\.11-|3\.14-lowest)'
+          # Simulate 3.11 jobs that trace only the listed files, then ask the real report.
+          for f in "$GITHUB_WORKSPACE/exp/covdata/$RUN"/.coverage.3.11-*; do
+            uv run --no-sync python "$GITHUB_WORKSPACE/exp/filter_cov.py" "$f" "$GITHUB_WORKSPACE/exp/keep311.txt"
+          done
+          variant keep311list ''
+          uv run --no-sync coverage report --include='tests/*' --skip-covered > /dev/null 2>&1 || true
+          COVERAGE_FILE=.coverage/.coverage uv run --no-sync strict-no-cover && echo "EXPCOV run=$RUN strict-no-cover passed" || echo "EXPCOV run=$RUN strict-no-cover FAILED"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
