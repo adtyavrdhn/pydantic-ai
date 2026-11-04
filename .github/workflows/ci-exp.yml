@@ -29,9 +29,6 @@ jobs:
       ABSURD_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       PGTASK_REQUIRE_LIVE: "1"
       PGTASK_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-      TEMPORAL_DEBUG: ${{ matrix.kind == 'durable' && '1' || '' }}
-      UV_COMPILE_BYTECODE: ${{ matrix.arm == 'compile' && '1' || '' }}
-      COVERAGE_CORE: ${{ matrix.arm == 'ctrace' && 'ctrace' || '' }}
       COVERAGE_FILE: ${{ github.workspace }}/.coverage/.coverage.exp
       KIND: ${{ matrix.kind }}
       ARM: ${{ matrix.arm }}

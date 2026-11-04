@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # One experiment cell. EXPMARK lines are parsed from the job log.
 set -u
+# Set only in the arm that needs it: an empty UV_COMPILE_BYTECODE is an error to uv, and control arms must match real CI.
+if [[ "$ARM" == compile ]]; then export UV_COMPILE_BYTECODE=1; fi
+if [[ "$ARM" == ctrace ]]; then export COVERAGE_CORE=ctrace; fi
+if [[ "$KIND" == durable ]]; then export TEMPORAL_DEBUG=1; fi
 mark() { echo "EXPMARK $1 $(date +%s)"; }
 EXTRAS=(--all-packages --all-extras --no-extra mcp-tasks)
 cpu=$(grep -m1 'model name' /proc/cpuinfo | sed 's/.*: //'); echo "EXPCPU $cpu nproc=$(nproc)"
