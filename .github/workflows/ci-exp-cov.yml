@@ -1,0 +1,69 @@
+name: ci-exp-cov
+# Leave-out coverage: does the real `coverage report` still pass when a set of CI jobs' data is left out?
+# Uses the exact coverage files of real merge queue runs, on the exact commit they came from. Runs no tests.
+on:
+  push:
+    branches: [ci-exp-cov*]
+env:
+  UV_FROZEN: "1"
+  UV_PYTHON_PREFERENCE: only-managed
+permissions:
+  contents: read
+jobs:
+  leaveout:
+    name: ${{ matrix.run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [41835109343, 41770436900]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: exp
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: false
+      - name: leave-out reports
+        shell: bash
+        env:
+          RUN: ${{ matrix.run }}
+        run: |
+          sha=$(grep "^$RUN " exp/shas.txt | cut -d' ' -f2)
+          mkdir repo && cd repo
+          git init -q
+          git fetch -q --depth=1 https://github.com/pydantic/pydantic-ai.git "$sha"
+          git checkout -q --detach FETCH_HEAD
+          echo "EXPTREE $(git rev-parse HEAD)"
+          uv sync --group dev --group coverage
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          variant() {
+            local name="$1" drop="$2"
+            rm -rf .coverage; mkdir .coverage
+            local kept=0
+            for f in "$GITHUB_WORKSPACE/exp/covdata/$RUN"/.coverage*; do
+              b=$(basename "$f")
+              if [[ -n "$drop" && "$b" =~ $drop ]]; then continue; fi
+              cp "$f" .coverage/; kept=$((kept+1))
+            done
+            local t0=$SECONDS
+            uv run --no-sync coverage combine -q > /dev/null
+            local rc=0
+            uv run --no-sync coverage report --skip-covered --show-missing > "$GITHUB_WORKSPACE/out/$RUN-$name.txt" 2>&1 || rc=$?
+            echo "EXPCOV run=$RUN variant=$name kept=$kept rc=$rc seconds=$((SECONDS-t0)) $(tail -1 "$GITHUB_WORKSPACE/out/$RUN-$name.txt" | tr -s ' ')"
+          }
+          variant baseline ''
+          variant drop311extras '^\.coverage\.3\.11-all-extras'
+          variant drop311durable '^\.coverage\.3\.11-durable'
+          variant drop311all '^\.coverage\.3\.11-'
+          variant drop312durable '^\.coverage\.3\.12-durable'
+          variant dropalldurable311and312 '^\.coverage\.3\.1[12]-durable'
+          variant drop314lowest '^\.coverage\.3\.14-lowest'
+          variant drop311andlowest '^\.coverage\.(3\.11-|3\.14-lowest)'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: leaveout-${{ matrix.run }}
+          path: out
