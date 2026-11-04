@@ -1,0 +1,60 @@
+name: ci-exp
+on:
+  push:
+    branches: [ci-exp-*]
+env:
+  COLUMNS: 150
+  UV_FROZEN: "1"
+  UV_PYTHON_PREFERENCE: only-managed
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/.insteadOf
+  GIT_CONFIG_VALUE_0: https://github.com/
+permissions:
+  contents: read
+jobs:
+  exp:
+    name: ${{ matrix.kind }} ${{ matrix.py }} ${{ matrix.arm }} r${{ matrix.rep }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: [{"kind":"extras","py":"3.14","shards":2,"arm":"compile","cov":true,"rep":5},{"kind":"extras","py":"3.11","shards":3,"arm":"warm","cov":true,"rep":3},{"kind":"extras","py":"3.14","shards":2,"arm":"control","cov":true,"rep":4},{"kind":"extras","py":"3.11","shards":3,"arm":"compile","cov":true,"rep":5},{"kind":"extras","py":"3.11","shards":3,"arm":"control","cov":true,"rep":3},{"kind":"extras","py":"3.14","shards":2,"arm":"control","cov":true,"rep":5},{"kind":"extras","py":"3.11","shards":3,"arm":"warm","cov":true,"rep":1},{"kind":"durable","py":"3.11","shards":0,"arm":"control","cov":true,"rep":3},{"kind":"extras","py":"3.14","shards":2,"arm":"control","cov":true,"rep":2},{"kind":"extras","py":"3.14","shards":2,"arm":"ctrace","cov":true,"rep":5},{"kind":"extras","py":"3.14","shards":2,"arm":"ctrace","cov":true,"rep":4},{"kind":"durable","py":"3.11","shards":0,"arm":"narrow","cov":true,"rep":5},{"kind":"extras","py":"3.11","shards":3,"arm":"compile","cov":true,"rep":4},{"kind":"extras","py":"3.11","shards":3,"arm":"warm","cov":true,"rep":4},{"kind":"extras","py":"3.11","shards":3,"arm":"control","cov":true,"rep":2},{"kind":"extras","py":"3.11","shards":3,"arm":"warm","cov":true,"rep":2},{"kind":"durable","py":"3.11","shards":0,"arm":"control","cov":true,"rep":5},{"kind":"durable","py":"3.11","shards":0,"arm":"control","cov":true,"rep":1},{"kind":"extras","py":"3.14","shards":2,"arm":"control","cov":true,"rep":3},{"kind":"extras","py":"3.11","shards":3,"arm":"compile","cov":true,"rep":2},{"kind":"extras","py":"3.14","shards":2,"arm":"control","cov":true,"rep":1},{"kind":"durable","py":"3.11","shards":0,"arm":"narrow","cov":true,"rep":1},{"kind":"durable","py":"3.11","shards":0,"arm":"narrow","cov":true,"rep":2},{"kind":"extras","py":"3.11","shards":3,"arm":"compile","cov":true,"rep":3},{"kind":"extras","py":"3.14","shards":2,"arm":"ctrace","cov":true,"rep":1},{"kind":"extras","py":"3.14","shards":2,"arm":"ctrace","cov":true,"rep":3},{"kind":"durable","py":"3.11","shards":0,"arm":"control","cov":true,"rep":4},{"kind":"extras","py":"3.11","shards":3,"arm":"control","cov":true,"rep":5},{"kind":"extras","py":"3.14","shards":2,"arm":"compile","cov":true,"rep":4},{"kind":"extras","py":"3.14","shards":2,"arm":"compile","cov":true,"rep":2},{"kind":"extras","py":"3.11","shards":3,"arm":"warm","cov":true,"rep":5},{"kind":"extras","py":"3.14","shards":2,"arm":"compile","cov":true,"rep":1},{"kind":"extras","py":"3.11","shards":3,"arm":"control","cov":true,"rep":1},{"kind":"extras","py":"3.11","shards":3,"arm":"control","cov":true,"rep":4},{"kind":"durable","py":"3.11","shards":0,"arm":"control","cov":true,"rep":2},{"kind":"extras","py":"3.11","shards":3,"arm":"compile","cov":true,"rep":1},{"kind":"durable","py":"3.11","shards":0,"arm":"narrow","cov":true,"rep":4},{"kind":"durable","py":"3.11","shards":0,"arm":"narrow","cov":true,"rep":3},{"kind":"extras","py":"3.14","shards":2,"arm":"compile","cov":true,"rep":3},{"kind":"extras","py":"3.14","shards":2,"arm":"ctrace","cov":true,"rep":2},{"kind":"verify","py":"3.11","shards":0,"arm":"verify","cov":false,"rep":1},{"kind":"verify","py":"3.12","shards":0,"arm":"verify","cov":false,"rep":1},{"kind":"verify","py":"3.14","shards":0,"arm":"verify","cov":false,"rep":1},{"kind":"nocuda","py":"3.11","shards":0,"arm":"nocuda","cov":false,"rep":1}]
+    env:
+      CI: true
+      UV_PYTHON: ${{ matrix.py }}
+      BLOCKBUSTER_ENABLED: false
+      TYPECHECK_EXAMPLES: ${{ matrix.kind == 'extras' && matrix.py == '3.14' }}
+      ABSURD_REQUIRE_LIVE: "1"
+      ABSURD_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      PGTASK_REQUIRE_LIVE: "1"
+      PGTASK_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      TEMPORAL_DEBUG: ${{ matrix.kind == 'durable' && '1' || '' }}
+      UV_COMPILE_BYTECODE: ${{ matrix.arm == 'compile' && '1' || '' }}
+      COVERAGE_CORE: ${{ matrix.arm == 'ctrace' && 'ctrace' || '' }}
+      COVERAGE_FILE: ${{ github.workspace }}/.coverage/.coverage.exp
+      KIND: ${{ matrix.kind }}
+      ARM: ${{ matrix.arm }}
+      PY: ${{ matrix.py }}
+      SHARDS: ${{ matrix.shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: start PostgreSQL 16
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          sudo pg_createcluster --port=5432 --locale=en_US.utf8 --start-conf=manual --pgoption=timezone=Etc/UTC 16 ci -- --auth-local=peer --auth-host=scram-sha-256
+          sudo -u postgres pg_ctlcluster 16 ci start -- -w -t 60
+          sudo -u postgres psql -X -h /var/run/postgresql -p 5432 -U postgres -d postgres -c "ALTER ROLE postgres PASSWORD 'postgres'"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.py }}
+          enable-cache: false
+      - run: mkdir .coverage
+      - name: run arm
+        shell: bash
+        run: bash .github/exp/run_arm.sh
