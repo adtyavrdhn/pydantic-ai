@@ -55,17 +55,20 @@ jobs:
             echo "EXPCOV run=$RUN variant=$name kept=$kept rc=$rc seconds=$((SECONDS-t0)) $(tail -1 "$GITHUB_WORKSPACE/out/$RUN-$name.txt" | tr -s ' ')"
           }
           variant baseline713 ''
-          uv pip install coverage==7.17.1
+          uv pip install coverage==7.17.0
           uv run --no-sync coverage --version | head -1
-          variant baseline717 ''
-          variant drop311all717 '^\.coverage\.3\.11-'
-          variant drop311extras717 '^\.coverage\.3\.11-all-extras'
-          variant drop311durable717 '^\.coverage\.3\.11-durable'
-          variant drop312durable717 '^\.coverage\.3\.12-durable'
-          variant drop314lowest717 '^\.coverage\.3\.14-lowest'
-          variant drop311andlowest717 '^\.coverage\.(3\.11-|3\.14-lowest)'
-          variant baseline717again ''
-          COVERAGE_FILE=.coverage/.coverage uv run --no-sync strict-no-cover && echo "EXPCOV run=$RUN strict-no-cover 7.17 passed" || echo "EXPCOV run=$RUN strict-no-cover 7.17 FAILED"
+          variant baseline7170 ''
+          variant drop311all7170 '^\.coverage\.3\.11-'
+          # 7.17.1 is inside the repo's cooldown; override it for this measurement only.
+          uv pip install --exclude-newer 2026-11-04T12:00:00Z coverage==7.17.1
+          uv run --no-sync coverage --version | head -1
+          variant baseline7171 ''
+          variant drop311all7171 '^\.coverage\.3\.11-'
+          variant drop311durable7171 '^\.coverage\.3\.11-durable'
+          variant drop312durable7171 '^\.coverage\.3\.12-durable'
+          variant drop314lowest7171 '^\.coverage\.3\.14-lowest'
+          variant baseline7171again ''
+          COVERAGE_FILE=.coverage/.coverage uv run --no-sync strict-no-cover && echo "EXPCOV run=$RUN strict-no-cover 7.17.1 passed" || echo "EXPCOV run=$RUN strict-no-cover 7.17.1 FAILED"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
