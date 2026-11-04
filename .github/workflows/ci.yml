@@ -1162,8 +1162,6 @@ jobs:
           tests/test_embeddings_error_categories.py
           tests/test_on_event.py
           tests/test_custom_events.py
-          tests/test_messages.py
-          tests/models/test_xai.py
           && uv run --all-packages --all-extras --no-extra mcp-tasks coverage combine
         env:
           COVERAGE_PROCESS_START: ${{ github.workspace }}/pyproject.toml
@@ -2011,6 +2009,10 @@ jobs:
     # A `pydantic-clai2`-only change skips every test job but `test`, a `pydantic-ai-harness`-only
     # change skips `test-fastmcp-4`, and a skipped need would otherwise skip this job too.
     if: ${{ !failure() && !cancelled() && needs.classify.outputs.content_only != 'true' }}
+    env:
+      # 3.14 collects nearly all the data, and coverage only knows a bare annotation like `x: int` isn't executed there
+      # (PEP 649) when the report itself runs on 3.14. An older Python counts those lines as missing.
+      UV_PYTHON: "3.14"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
