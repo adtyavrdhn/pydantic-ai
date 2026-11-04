@@ -4914,7 +4914,7 @@ async def test_early_break_with_running_tool_cancels_task() -> None:
         return 'never'  # pragma: no cover
 
     async with agent.realtime(FakeRealtimeModel(conn)).session() as session:
-        async for event in session:
+        async for event in session:  # pragma: no branch
             if isinstance(event, FunctionToolCallEvent):
                 await started.wait()
                 break
@@ -5189,7 +5189,7 @@ async def test_interrupt_does_not_cancel_in_flight_tool() -> None:
 
     conn = _IdleAfterCall([])
     async with agent.realtime(FakeRealtimeModel(conn)).session() as session:
-        async for event in session:
+        async for event in session:  # pragma: no branch
             if isinstance(event, FunctionToolCallEvent):
                 await started.wait()
                 await session.interrupt()
@@ -6470,7 +6470,7 @@ async def test_early_break_cancels_pump() -> None:
     conn = _BlockAfterFirst()
     agent: Agent[None, str] = Agent()
     async with agent.realtime(FakeRealtimeModel(conn)).session() as session:
-        async for event in session:
+        async for event in session:  # pragma: no branch
             assert isinstance(event, PartStartEvent)
             await parked.wait()  # the pump has consumed the first event and is parked on the next
             break
@@ -9341,7 +9341,7 @@ async def test_close_settles_in_flight_state_into_history() -> None:
         runner=runner,
     )
     async with session:
-        async for event in session:
+        async for event in session:  # pragma: no branch
             if isinstance(event, FunctionToolCallEvent):
                 break
 
@@ -9362,7 +9362,7 @@ async def test_close_settles_partial_reply_as_interrupted() -> None:
     # instead of the buffered transcript silently vanishing from `all_messages()`.
     session = RealtimeSession(FakeRealtimeConnection([OutputTranscript(text='one moment', is_final=False)]))
     async with session:
-        async for event in session:
+        async for event in session:  # pragma: no branch
             if isinstance(event, PartDeltaEvent):
                 break
 

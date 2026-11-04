@@ -2264,7 +2264,7 @@ async def test_iter_break_in_cancelled_scope_cancels_wrap_run_cleanup_like_the_s
             tg.start_soon(_permit_cleanup, cleanup)
             with anyio.CancelScope() as scope:
                 async with agent.iter('go') as agent_run:
-                    async for _node in agent_run:
+                    async for _node in agent_run:  # pragma: no branch
                         scope.cancel()
                         break
 
@@ -2552,7 +2552,7 @@ async def test_iter_break_teardown_propagates_external_cancellation():
 
     async def drive() -> None:
         async with agent.iter('go') as agent_run:
-            async for _node in agent_run:
+            async for _node in agent_run:  # pragma: no branch
                 break
 
     task = asyncio.create_task(drive())

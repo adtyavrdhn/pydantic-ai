@@ -1802,7 +1802,7 @@ async def test_interruption_finalizes_session_response_as_interrupted() -> None:
     )
     events: list[Any] = []
     async with session:
-        async for event in session:
+        async for event in session:  # pragma: no branch
             events.append(event)
             if isinstance(event, RealtimeTurnCompleteEvent):
                 break
@@ -4456,7 +4456,7 @@ async def test_turn_complete_reason_reaches_the_model_response() -> None:
         tool_manager=make_tool_manager(),
     )
     async with session:
-        async for event in session:
+        async for event in session:  # pragma: no branch
             if isinstance(event, RealtimeTurnCompleteEvent):
                 break
 
