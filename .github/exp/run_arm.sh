@@ -42,6 +42,17 @@ fi
 
 export COVERAGE_PROCESS_START="$PWD/pyproject.toml"
 runner=(coverage run -m pytest)
+if [[ "$ARM" == nocov ]]; then
+  # What a job without coverage runs today: see `COLLECT_COVERAGE` in ci.yml.
+  unset COVERAGE_PROCESS_START
+  runner=(pytest)
+fi
+if [[ "$ARM" == include ]]; then
+  # Same settings as pyproject.toml, tracing only the files only 3.11 can cover.
+  uv run "${EXTRAS[@]}" python "$RUNNER_TEMP/exp/make_rc.py" "$RUNNER_TEMP/exp/keep311.txt" "$RUNNER_TEMP/exp/covrc"
+  export COVERAGE_PROCESS_START="$RUNNER_TEMP/exp/covrc"
+  runner=(coverage run --rcfile="$RUNNER_TEMP/exp/covrc" -m pytest)
+fi
 mark sync_start
 uv run "${EXTRAS[@]}" python -c "print('synced')" || exit 1
 mark sync_end
@@ -72,4 +83,9 @@ fi
 mark pytest_start
 uv run "${EXTRAS[@]}" "${runner[@]}" --durations=5 -n logical --dist=loadgroup --ignore=tests/durable_exec -m "not temporal" "${shard_args[@]}" || { echo "EXPFAIL pytest $?"; failed=1; }
 mark pytest_end
+if [[ "$ARM" == include ]]; then
+  # Prove the arm traced what it claims: count the measured files after combining.
+  uv run "${EXTRAS[@]}" coverage combine --rcfile="$RUNNER_TEMP/exp/covrc" -q --data-file="$COVERAGE_FILE" || true
+  python3 -c "import os, sqlite3; c = sqlite3.connect(os.environ['COVERAGE_FILE']); print('EXPINCLUDE files', c.execute('select count(*) from file').fetchone()[0], 'arcs', c.execute('select count(*) from arc').fetchone()[0])" || echo "EXPINCLUDE unreadable"
+fi
 exit $failed
