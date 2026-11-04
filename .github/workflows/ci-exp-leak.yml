@@ -1,0 +1,84 @@
+name: ci-exp-leak
+# Measurement only: which tests leak event loops and sqlite connections, and how long the slowest tests take per leg.
+# Runs an exact upstream commit; the plugin stays outside the tree.
+on:
+  push:
+    branches: [ci-exp-leak*]
+env:
+  COLUMNS: 150
+  UV_PYTHON_PREFERENCE: only-managed
+permissions:
+  contents: read
+jobs:
+  leak:
+    name: ${{ matrix.py }} ${{ matrix.res }} cov=${{ matrix.cov }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {py: "3.13", res: locked, cov: false}
+          - {py: "3.13", res: lowest, cov: false}
+          - {py: "3.14", res: lowest, cov: false}
+          - {py: "3.14", res: lowest, cov: true}
+          - {py: "3.14", res: locked, cov: true}
+          - {py: "3.12", res: lowest, cov: false}
+    env:
+      CI: true
+      UV_PYTHON: ${{ matrix.py }}
+      BLOCKBUSTER_ENABLED: false
+      ABSURD_REQUIRE_LIVE: "1"
+      ABSURD_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      PGTASK_REQUIRE_LIVE: "1"
+      PGTASK_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      LEAK_DIR: ${{ github.workspace }}/leaks
+      RES: ${{ matrix.res }}
+      COV: ${{ matrix.cov }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: exp
+      - name: start PostgreSQL 16
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          sudo pg_createcluster --port=5432 --locale=en_US.utf8 --start-conf=manual --pgoption=timezone=Etc/UTC 16 ci -- --auth-local=peer --auth-host=scram-sha-256
+          sudo -u postgres pg_ctlcluster 16 ci start -- -w -t 60
+          sudo -u postgres psql -X -h /var/run/postgresql -p 5432 -U postgres -d postgres -c "ALTER ROLE postgres PASSWORD 'postgres'"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.py }}
+          enable-cache: false
+      - name: run
+        shell: bash
+        run: |
+          mkdir repo && cd repo
+          git init -q
+          git fetch -q --depth=1 https://github.com/pydantic/pydantic-ai.git 82f9625d8
+          git checkout -q --detach FETCH_HEAD
+          echo "EXPTREE $(git rev-parse HEAD)"
+          grep -m1 'model name' /proc/cpuinfo
+          if [[ "$RES" == lowest ]]; then
+            uv sync --all-packages --all-extras --no-extra mcp-tasks --resolution lowest-direct
+          else
+            UV_FROZEN=1 uv sync --all-packages --all-extras --no-extra mcp-tasks
+          fi
+          uv pip list 2>/dev/null | grep -iE '^(markdownify|beautifulsoup4|lxml|html5lib|coverage) ' || true
+          export PYTHONPATH="$GITHUB_WORKSPACE/exp/plugin"
+          mkdir -p .coverage
+          runner=(pytest)
+          if [[ "$COV" == true ]]; then
+            export COVERAGE_PROCESS_START="$PWD/pyproject.toml"
+            runner=(coverage run -m pytest)
+          fi
+          uv run --no-sync "${runner[@]}" -p leakplugin --durations=60 -n logical --dist=loadgroup --ignore=tests/durable_exec -m "not temporal" tests || echo "EXPFAIL $?"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: leaks-${{ matrix.py }}-${{ matrix.res }}-${{ matrix.cov }}
+          path: leaks
+          if-no-files-found: warn
