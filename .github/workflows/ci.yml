@@ -1162,6 +1162,8 @@ jobs:
           tests/test_embeddings_error_categories.py
           tests/test_on_event.py
           tests/test_custom_events.py
+          tests/test_messages.py
+          tests/models/test_xai.py
           && uv run --all-packages --all-extras --no-extra mcp-tasks coverage combine
         env:
           COVERAGE_PROCESS_START: ${{ github.workspace }}/pyproject.toml
