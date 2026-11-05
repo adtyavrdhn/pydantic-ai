@@ -1,0 +1,28 @@
+# Experiment: does a job that `needs` a job cancelled by its own timeout run under the coverage job's condition?
+name: cancel-exp
+on:
+  push:
+    branches: [ci-exp-cancel]
+permissions: {}
+jobs:
+  times-out:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: sleep 120
+  passes:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+  old-condition:
+    needs: [times-out, passes]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'ran; needs results ${{ join(needs.*.result, ',') }}'
+  new-condition:
+    needs: [times-out, passes]
+    if: ${{ !failure() && !cancelled() && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ran
